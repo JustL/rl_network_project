@@ -36,10 +36,10 @@ class Wait_Flow(Structure):
 
     parameters : flow attribute(s)
     '''
-    def set_attributes(self, attr):
+    def _set_attributes(self, attr):
         pass
 
-    
+
     '''
     Method provides an interface to check if this
     structure/flow is waiting.
@@ -49,11 +49,11 @@ class Wait_Flow(Structure):
 
 
     '''
-    Method provides an interface for 
+    Method provides an interface for
     setting a flow to be a valid waiting
-    flow. 
+    flow.
     '''
-    def set_valid(self, val):
+    def _set_valid(self, val):
         pass
 
 
@@ -62,7 +62,7 @@ class Wait_Flow(Structure):
 '''
 class Compl_Flow(object):
 
-    
+
     def __init__(self):
         pass
 
@@ -84,6 +84,6 @@ class Compl_Flow(object):
 
      paramters : flow attribute(s)
     '''
-    def set_attributes(self, attr):
+    def _set_attributes(self, attr):
         pass
 

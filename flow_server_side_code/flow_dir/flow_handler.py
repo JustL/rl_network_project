@@ -14,18 +14,17 @@ from GS_timing import micros # for a precise time measurements
 from flow_impl import RL_Compl_Flow
 from multiprocessing import Process
 from socket import socket as Socket
-from socket import AF_INET, SOCK_STREAM
+from socket import AF_INET, SOCK_STREAM, IPPROTO_TCP
 import socket.error
 import time
 
 
 class Flow_Handler(Process):
     __release_version = 1
-    __TCP_NUMBER  = 6
     __CONST_TIME_VAL = 3 # 3 s of sleeping
     __protcol_signal = ('s', 'r') # strings are used for notifying the remote server that a flow has completed
 
-    def __init__(self, ip_address, cmp_queue, inc_arr, flow_size, flow_pref_rate, flow_index):
+    def __init__(self, ip_address, cmp_queue, inc_arr, flow_size, flow_pref_rate, flow_index, flow_priority=0):
         Process.__init__(self)
         self._m_socket = None                # socket that handles the comminication
         self._m_rem_address = ip_address     # the ipv4 address of a remote server
@@ -34,12 +33,12 @@ class Flow_Handler(Process):
         self._m_size = flow_size             # the size for this instance of the Flow_Handler class
         self._m_rate = flow_pref_rate        # required flow rate for this flow
         self._m_index = flow_index           # the index of this flow in the incomplete flows array
-        self._m_priority = 1                 # TO DO
+        self._m_priority = flow_priority     # TO DO
 
     def run(self):
 
         try: # creating a socket
-            self._m_socket = Socket(AF_INET, SOCK_STREAM,Flow_Handler. __TCP_NUMBER)
+            self._m_socket = Socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
         except socket.error as msg:
             self._m_socket = None
 
@@ -136,8 +135,27 @@ class Flow_Handler(Process):
           time.sleep(Flow_Handler.__CONST_TIME_VAL)  # sleep for const time seconds
 
 
+    '''
+    Method closes the socket that belongs to this process.
+    The rsources allocated to the socket are properly
+    released and the connection terminated in an appropriate
+    manner.
+    '''
+    def _close_socket(self):
+        # close socket so that the resources would be
+        # deallocated as soon as possible.
+        self._m_socket.shutdown()
+        self._m_socket.close()
 
 
+    '''
+    Method just addds an extra step: closing the socket.
+    Basically, the same implementation as of the Process class.
+    '''
+    def terminate(self):
+        # close the socket first
+        self._close_socket()
+        Process.terminate(self)
 
 
 

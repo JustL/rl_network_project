@@ -1,1 +1,1 @@
-__all__ = ["flow", "controller"]
+__all__ = ["flow_interfaces", "flow_controller"]

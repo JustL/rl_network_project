@@ -8,7 +8,7 @@ classes.
 '''
 
 
-from  flow_interfaces import Wait_Flow, Compl_Flow
+from  interface_dir.flow_interfaces import Wait_Flow, Compl_Flow
 from ctypes import c_int, c_double, c_short
 
 class RL_Wait_Flow(Wait_Flow):
@@ -35,7 +35,7 @@ class RL_Wait_Flow(Wait_Flow):
 
     parameter : must be a Python tuple
     '''
-    def set_attributes(self, attr):
+    def _set_attributes(self, attr):
         self._size, self._priority, self._rate_limit = attr
 
 
@@ -55,7 +55,7 @@ class RL_Wait_Flow(Wait_Flow):
     parameter : val : 0 for invalid, any other val for
     valid
     '''
-    def set_valid(self, val):
+    def _set_valid(self, val):
         self._valid_field = val
 
 
@@ -86,7 +86,7 @@ class RL_Compl_Flow(Compl_Flow):
 
     paramters : attr : must be a Python tuple
     '''
-    def set_attributes(self, attr):
+    def _set_attributes(self, attr):
         self._fct, self._size, self._priority. self._rate_limit = attr
 
 
