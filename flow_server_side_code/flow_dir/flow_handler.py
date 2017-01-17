@@ -22,12 +22,12 @@ import time
 class Flow_Handler(Process):
     __release_version = 1
     __CONST_TIME_VAL = 3 # 3 s of sleeping
-    __protcol_signal = ('s', 'r') # strings are used for notifying the remote server that a flow has completed
+    PROTOCOL_SIGNAL = ('s', 'r') # strings are used for notifying the remote server that a flow has completed
 
     def __init__(self, ip_address, cmp_queue, inc_arr, flow_size, flow_pref_rate, flow_index, flow_priority=0):
         Process.__init__(self)
         self._m_socket = None                # socket that handles the comminication
-        self._m_rem_address = ip_address     # the ipv4 address of a remote server
+        self._m_rem_address = ip_address     # the ipv4 address of a remote server (including the port number)
         self._m_queue = cmp_queue            # queue for passing completed flows
         self._m_arr = inc_arr                # for storing incomplete flows
         self._m_size = flow_size             # the size for this instance of the Flow_Handler class
@@ -46,7 +46,7 @@ class Flow_Handler(Process):
             return
 
         try: # try to connect to the remote server
-            self._m_socket(self._rem_address)
+            self._m_socket.connect(self._rem_address)
         except socket.error:
             self._m_socket.close()
             self._m_socket = None
@@ -80,24 +80,26 @@ class Flow_Handler(Process):
 
       data = '0'*self._m_size # a flow-size string
 
+      # initialize some message constants
+      MSG_LEN = len(Flow_Handler.PROTOCOL_SIGNAL[0])
+      TERM_MSG = Flow_Handler.PROTOCOL_SIGNAL[0]
+
+      # initialize some variables for receiving a flow
+      RECV_LEN = len(Flow_Handler.PROTOCOL_SIGNAL[1])
+      RECV_SIGN = Flow_Handler.PROTOCOL_SIGNAL[1]
+
       '''
       The while loop acts as if it was a server loop -- runs forever.
       This approach used for using the same socket for sending a flow in order
       to reduce overhead for creating a new socket and a new process.
       Once the flow has completed, for some fixed time the process sleeps.
       '''
-      while True:
+      while 1:
           self._register_for_flow() # starting a new flow
 
           # initialize some variables for sending a flow
           total_sent = 0
-          MSG_LEN = len(Flow_Handler.__protocol_signal[0])
           recv_data = []
-          term_msg = Flow_Handler.__protocol_signal[0]
-
-          # initialize some variables for receiving a flow
-          MSG_RECV = len(Flow_Handler.__protocol_signal[1])
-          recv_sign = Flow_Handler.__protocol_signal[1]
 
 
           flow_start = micros() # get the current time for timestamping
@@ -111,17 +113,16 @@ class Flow_Handler(Process):
           # the flow data has been sent
           # add the terminal sequence
           total_sent = 0
-          MSG_LEN = len(Flow_Handler.__protocol_signal[0])
-          term_msg = Flow_Handler.__protocol_signal[0]
+
           while total_sent < MSG_LEN:
-              sent_bytes = self._m_socket.send(term_msg[total_sent : ])
+              sent_bytes = self._m_socket.send(TERM_MSG[total_sent : ])
               if sent_bytes == 0:
                   raise RuntimeError("socket connection broken")
 
 
           # wait for response from the remote server
-          while "".join(recv_data) != recv_sign:   # loop until the terminal message has been received
-              chunk = self._m_socket(MSG_RECV)
+          while "".join(recv_data) != RECV_SIGN:   # loop until the terminal message has been received
+              chunk = self._m_socket.recv(RECV_LEN)
 
               if chunk == '':
                   raise RuntimeError("socket connection broken")
