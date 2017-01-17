@@ -24,8 +24,8 @@ class Flow_Handler(Process):
     __CONST_TIME_VAL = 3 # 3 s of sleeping
     PROTOCOL_SIGNAL = ('s', 'r') # strings are used for notifying the remote server that a flow has completed
 
-    def __init__(self, ip_address, cmp_queue, inc_arr, flow_size, flow_pref_rate, flow_index, flow_priority=0):
-        Process.__init__(self)
+    def __init__(self, ip_address,  cmp_queue, inc_arr, flow_size, flow_pref_rate, flow_index, flow_priority=0):
+        super.__init__(Flow_Handler, self)
         self._m_socket = None                # socket that handles the comminication
         self._m_rem_address = ip_address     # the ipv4 address of a remote server (including the port number)
         self._m_queue = cmp_queue            # queue for passing completed flows
@@ -156,7 +156,7 @@ class Flow_Handler(Process):
     def terminate(self):
         # close the socket first
         self._close_socket()
-        Process.terminate(self)
+        super(self).terminate()
 
 
 
