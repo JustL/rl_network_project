@@ -13,8 +13,10 @@ class RL_Flow_Learning(object):
     which is implemented as a deep neural net, by
     calling this method, the neural net would be
     initialized in a conrete class.
+
+    Args : init_file : a file where the model is saved.
     '''
-    def start_model(self):
+    def start_model(self, init_file=None):
         pass
 
 
@@ -23,8 +25,11 @@ class RL_Flow_Learning(object):
     By calling this method the user might expect to
     save the model paramters, some statistics and so
     on. The taken steps only dpend on the conrete class.
+
+    Args:
+        save_file : a file that will store the model
     '''
-    def stop_model(self):
+    def stop_model(self, save_file=None):
         pass
 
 

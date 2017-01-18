@@ -20,12 +20,7 @@ def model_run_function(model, task_queue, term_event):
 
     while not term_event.is_set():   # process computations until
                                      # the parent process dies
-        while not local_copy:
-            # run first the model on local copies of previous
-            # batches
-            model.pass_data_for_learning(local_copy.pop(0))
 
-        # done with local copies
         # copy all waiting batches to the local list
         try:
             while 1:
@@ -33,10 +28,13 @@ def model_run_function(model, task_queue, term_event):
                 local_copy.append(task_queue.get(False))
 
         except Empty:
+            pass
             # means the task_queue has no more tasks
-            if not local_copy:
-                # no task has been dequeued, wait for at least one
-                local_copy.append(task_queue.get(True))
+
+        # process the tasks that have been added to the local list
+        while local_copy:
+            # process data that the local list has
+            model.pass_data_for_learning(local_copy.pop(0))
 
 
     # handled all task cases. The below code stops the model
@@ -107,8 +105,7 @@ class RL_Server(object):
         try:
             # stop the computation thread
             self._m_event.set()
-            while(self._m_comp_thread.is_alive()):
-                pass
+            self._m_comp_thread.join()
 
         except RuntimeError as exp:
             print 'RL_Server:', exp.strerror
