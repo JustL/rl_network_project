@@ -49,7 +49,7 @@ class Flow_Mediator(object):
         self._m_cm_flows = Queue() # the structure that stores completed flows
         self._m_processes = [None]*Flow_Mediator.__NUM_OF_STATIC_FLOWS
 
-        self._init_flow(rl_server, ip_addresses)
+        self._init_flows(rl_server, ip_addresses)
 
     '''
     Helper method to initialize the flows on
@@ -58,6 +58,7 @@ class Flow_Mediator(object):
     server-to-server connection.
     '''
     def _init_flows(self, rl_server, ip_addresses):
+
         self._m_controller.start()         # start the traffic controller
 
         # try to connect to the remote rl server
@@ -123,7 +124,7 @@ class Flow_Mediator(object):
     send updates to the RL server after a timeout expires.
     '''
     def start_updating(self):
-        while True:
+        while 1:
             time.sleep(Flow_Mediator.__SLEEP_TIME) # sleep for a while
 
             # the timeout has expired. Send updates to the remote server
@@ -136,18 +137,23 @@ class Flow_Mediator(object):
             # done copying running/waiting flows
             # copy finihsed flows
             send_done_flows = []
-            try:
-                send_done_flows.append(self._m_cm_flows.get())
-            except Empty:
-                # done dequeueing the queue
-                pass
-            except Exception as err:
-                print 'Error dequeing the queue'
-                print err
-                self.kill_processes()
+
+            #keep reading until an exception occurs
+            while 1:
+                try:
+                    send_done_flows.append(self._m_cm_flows.get())
+                except Empty:
+                    # done dequeueing the queue
+                    pass
+                except Exception as err:
+                    print 'Error dequeing the queue'
+                    print err.strerror
+                    self.kill_processes()
 
             # By using RPC, send the lists to the RL server
             # TO DO
+            param_list = [self._m_controller.get_controller_address(), send_wait_flows, send_done_flows]
+            self._m_proxy.pass_flow_info(param_list)
 
         '''
         Public method that closes sockets and kills all the processes.
@@ -172,10 +178,10 @@ class Flow_Mediator(object):
 
 
 if __name__ == '__main__':
-    wait_flow_type = RL_Wait_Flow()
+    wait_flow_type = RL_Wait_Flow() # determines the C array's type
     wait_flow_lock = Lock() # the lock used for shared memrory array
-    con = Flow_Controller()
-    mediator = Flow_Mediator(('127.0.0.1, 16850'), ('127.0.0.1', 8000))
+    con = Flow_Controller(('127.0.0.1', 16850))
+    mediator = Flow_Mediator(('127.0.0.1', 16850), ('127.0.0.1', 8000), con, wait_flow_type,  wait_flow_lock)
     # If the KeyboardInterrupt exception occurs, handle it
     try:
         mediator.start_updating()   # start running the flows

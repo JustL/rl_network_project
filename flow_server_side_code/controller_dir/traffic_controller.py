@@ -2,12 +2,14 @@ from interface_dir.flow_controller import Flow_Controller
 from SimpleXMLRPCServer import SimpleXMLRPCServer
 import threading
 import socket
-from pyroute2 import IPRoute
+from pyroute2 import IPRoute, RTM_DELQDISC, RTM_NEWQDISC, RTM_NEWCLASS ,TC_H_ROOT, NetlinkError
+
 
 
 class Traffic_Controller(Flow_Controller):
 
-    __ACTION_TUPLE_LENGTH = 3     # so far : ip address, priority, rate
+    __ACTION_TUPLE_LENGTH = 2     # so far : priority, rate
+    __PRIORITY_LIMIT      = 7     # to ensure that priority does not exceed limit
     '''
     The class is a concrete implementation of the Flow_Controller
     interface. The class runs an RPC server on a separate thread
@@ -27,8 +29,49 @@ class Traffic_Controller(Flow_Controller):
     '''
     def _init_object(self, ip_address):
         self._m_server = SimpleXMLRPCServer(ip_address)
-        self._m_infs = {}           # for keeping track of IPv4 address : interface matching
+        self._m_infcs = {}           # for keeping track of IPv4 address : interface matching
         self._m_cntrl = IPRoute()   # an interface to control traffic
+        self._init_default_htb()    # for each interface set 'htb' as the default
+
+
+    '''
+    Methid modified the default configurations of
+    traffic engineering and resets them to htb.
+
+    Raises:
+        NetlinkErro: An error occured initializing TC subsystem.
+        Exception:   Any other exception thrown during initialization.
+    '''
+
+    def _init_default_htb(self):
+        idx = 0x10000
+
+        # apply to all IPv4 interfaces
+        interfaces = self._m_cntrl.get_addr(family=socket.AF_INET)
+
+        for ifc in interfaces:
+            # first of all add the interface to the ifc dictionary
+            if_index = ifc['index']               # interface index
+            self._m_infcs[ifc.get_attr('IFA_ADDRESS')] = if_index
+
+            try:
+                # delete the current discipline
+                self._m_cntrl.tc(RTM_DELQDISC, None, if_index, 0, parent=TC_H_ROOT)
+            except Exception as exp:
+                if isinstance(exp, NetlinkError) and exp.code == 2:
+                    # nothing to delete
+                    pass
+                else:
+                    # problem with the system
+
+                    raise
+
+            # scheduling has been deleted, add htb
+            try:
+                self._m_cntrl.tc(RTM_NEWQDISC, "htb", if_index, idx, default=0)
+            except Exception as exp:
+                raise
+
 
     '''
     A method from the Flow_Controller interface.
@@ -49,8 +92,24 @@ class Traffic_Controller(Flow_Controller):
         # thread, an excpetion might occur
         try:
             self._m_server.shutdown() # close the server
+            self._m_close()           # clean up the server
         except RuntimeError:
             pass
+
+        except Exception as exp:
+            print 'In traffic_controller a different type of exception:', exp.message
+
+    '''
+    Public method used for getting the server's address.
+    This is needed in order to enable the remote rl server
+    pass upadtes to this server. The RL server must know
+    the address of this server.
+    '''
+    def get_controller_address(self):
+        # returns the tuple of IPv4 address
+        return self._m_server.server_address
+
+
 
     '''
     The interface that is used by a remote RL server to pass
@@ -64,29 +123,17 @@ class Traffic_Controller(Flow_Controller):
             # invalid update
             raise RuntimeError("Invalid update tuple")
 
-        # get the updates
-        (ip_address, priority, rate) = params
-
-        if_idx = -1
         # check whether it is needed to retrieve the interface index
-        if ip_address[0] in self._m_infs:
-            if_idx = self._m_infs[ip_address[0]] # retireve interface index
+        # TO DO: now only one interface is supoorted. Improve in the
+        # future
+        if self._m_server.server_address[0] in self._m_infs:
+            if_idx = self._m_infs[self._m_server.server_address[0]] # retrieve interface index
         else:
-            # find the interface that matches the ip address
-            interfaces = self._m_cntrl.get_addr(family=socket.AF_INET)
-            for infc in interfaces:
-                # if the interface was found
-                if infc.get_attr('IFA_ADDRESS') == ip_address[0]:
-                    if_idx = infc['index']
-                    self._m_infs[ip_address[0]] = if_idx # cache the interface
-                    break # no need to process further
+            # should never occur
+            raise RuntimeError("Invalid interface.")
 
-            # check if the ip address matched any physical interface
-            if if_idx == -1:  # do nothing
-                raise RuntimeError("Invalid interface")
-
-            # apply update scheduling rules
-            self._update_traffic_flow(if_idx, params)
+        # apply update scheduling rules
+        self._update_traffic_flow(if_idx, params)
 
     '''
     Helper method that uses the tc command to
@@ -95,7 +142,23 @@ class Traffic_Controller(Flow_Controller):
     tc command manual and the pyroute2 documentation.
     '''
     def _update_traffic_flow(self, if_idx, params):
-        pass
+
+        class_idx = 0x10000 + params["priority"] % Traffic_Controller.__PRIOTIY_LIMIT + 1 # since priority [0, 6] ==> classes [1, PRIORITY_LIMIT]
+        rate = params["rate"]
+        parent = 0x10000
+
+        try:
+            self._m_cntrl.tc(
+                    RTM_NEWCLASS, "htb", if_idx,
+                    class_idx, parent=parent,
+                    rate="{0}kbit".format(rate))
+        except NetlinkError as exp:
+            # netlink error
+            raise exp(exp.message + " NetlinkError")
+
+        except Exception as exp:
+            # some other excpetion
+            raise exp(exp.message + " Not NetlinkError")
 
 
 

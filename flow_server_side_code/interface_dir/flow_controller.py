@@ -23,6 +23,15 @@ class Flow_Controller(object):
     def stop(self):
         pass
 
+    '''
+    An interface to retrieve the tuple that
+    contains the IPv4 address of the controller.
+    This interface is provided since it is preferred
+    to run a controller on a separate thread/process.
+    '''
+    def get_controller_address(self):
+        pass
+
 
     '''
     An interface to pass the computed parameters to
