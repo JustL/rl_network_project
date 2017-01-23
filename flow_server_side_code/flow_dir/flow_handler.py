@@ -23,14 +23,25 @@ import ctypes
 from sock_addr_struct import Sockaddr_In
 
 
+# global constants used among a few modules
+PROTOCOL_SIGNAL = ("s", "r")      # a tuple of flags that terminate a
+                                  # sending flow and a receiving flow.
+                                  # In other words, each flow from
+                                  # Flow_Handler is terminated by
+                                  # PROTOCOL_SIGNAL[0] while each flow
+                                  # from a remote server is terminated by
+                                  # PROTOCOL_SIGNAL[1].
+
+SO_PRIORITY = 12                  # a Linux flag that enables setting a
+                                  # socket priority
+                                  # (refer to setsockopt(7) Linux)
 
 class Flow_Handler(Process):
     __release_version = 1
     __CONST_TIME_VAL = 3 # 3 s of sleeping
-    PROTOCOL_SIGNAL = ('s', 'r') # strings are used for notifying the remote server that a flow has completed
-    SO_PRIORITY = 12      # a Linux flag that enables setting a sokcet priority
 
-    def __init__(self, ip_address,  cmp_queue, inc_arr, flow_size, flow_pref_rate, flow_index, flow_priority=1):
+
+    def __init__(self, ip_address,  cmp_queue, inc_arr, flow_size, flow_pref_rate, flow_index, flow_priority=0):
         super.__init__(Flow_Handler, self)
 
         self._m_rem_addr = ip_address        # the ipv4 address of a remote server (including the port number)
@@ -66,7 +77,7 @@ class Flow_Handler(Process):
 
         # try to set the priority for this new socket
         if libc.setsockopt(sockfd, SOL_SOCKET,
-                           Flow_Handler.SO_PRIORITY, ctypes.byref
+                           SO_PRIORITY, ctypes.byref
                            (self._m_priority), ctypes.sizeof
                            (self._m_priority)) < 0:
             raise RuntimeError("The priority of the newly created socket cannot be modified")
@@ -120,16 +131,16 @@ class Flow_Handler(Process):
 
       data = (ctypes.c_char*self._m_size) # a flow-size string
       data.value = "0"*(self._m_size-1)
-      chunk = (ctypes.c_char*1024)()      # a buffer to store received data
+      CHUNK_SIZE = 1024
+      chunk = (ctypes.c_char*CHUNK_SIZE)()      # a buffer to store received data
 
       # initialize some message constants
-      MSG_LEN = len(Flow_Handler.PROTOCOL_SIGNAL[0]) + 1
+      MSG_LEN = len(PROTOCOL_SIGNAL[0]) + 1
       TERM_MSG = (ctypes.c_char*MSG_LEN+1)()
-      TERM_MSG.value = Flow_Handler.PROTOCOL_SIGNAL[0]
+      TERM_MSG.value = PROTOCOL_SIGNAL[0]
 
       # initialize some variables for receiving a flow
-      RECV_LEN = len(Flow_Handler.PROTOCOL_SIGNAL[1])
-      RECV_SIGN = Flow_Handler.PROTOCOL_SIGNAL[1]
+      RECV_SIGN = PROTOCOL_SIGNAL[1]
 
       '''
       The while loop acts as if it was a server loop -- runs forever.
@@ -166,7 +177,7 @@ class Flow_Handler(Process):
 
           # wait for response from the remote server
           while "".join(recv_data) != RECV_SIGN:   # loop until the terminal message has been received
-              read_bytes = libc.recv(sockfd, chunk, RECV_LEN, 0)
+              read_bytes = libc.recv(sockfd, chunk, CHUNK_SIZE-1, 0)
 
               if read_bytes < 0:
                   raise RuntimeError("socket connection broken")

@@ -32,7 +32,8 @@ class Flow_Mediator(object):
     __NUM_OF_STATIC_FLOWS = 75 # number of flows on this server
     __FLOW_SIZES =      [100000, 250000, 1000000, 500000000] # flow sizes (bytes)
     __FLOW_RATES =      [100, 200] # flow rate Kbit/s
-    __FLOW_PRIORITIES = [0, 1, 2, 3, 4, 5, 6]   # 7 requires admit (not used in Oython since Python does not support the 'SO_PRIRITY' flag)
+    __FLOW_PRIORITIES = [0, 1, 2, 3, 4, 5, 6]   # 7 requires admin
+    __FLOW_PRIORITY_PROB = [0.5, 0.2, 0.15, 0.05, 0.05, 0.03, 0.02] # priority porb
     __FLOW_PROBS =      [0.5, 0.35, 0.23, 0.02]   # flow probabilities
     '''
     This class acts as a mediator that interacts with the flows on this
@@ -54,7 +55,7 @@ class Flow_Mediator(object):
     '''
     Helper method to initialize the flows on
     this server. As it was agreed, a cluster of 4
-    servers are coominicating ==> 25 flows per
+    servers are communicating ==> 25 flows per
     server-to-server connection.
     '''
     def _init_flows(self, rl_server, ip_addresses):
@@ -79,21 +80,28 @@ class Flow_Mediator(object):
         num_of_hosts  = len(ip_addresses)
         flows_per_host = self._get_nums_of_flows(num_of_hosts)
 
+        # priority generator
+        pr_generator = self._get_flow_priority()
+
         # loop through each of the flows and create a new Flow_Handler
         for host in xrange(num_of_hosts):
             # for each host create a few flows
             for f_idx in xrange(len(flows_per_host[host])):
-                self._m_processes[host + f_idx] = Flow_Handler(ip_addresses[host], self._m_cm_flows, self._m_arr, flows_per_host[host][f_idx],Flow_Mediator.__FLOW_RATES[f_idx % len(Flow_Mediator.__FLOW_RATES)], host + f_idx)
+                self._m_processes[host + f_idx] = Flow_Handler(ip_addresses[host], self._m_cm_flows,
+                self._m_arr, flows_per_host[host][f_idx],
+                Flow_Mediator.__FLOW_RATES[f_idx % len(Flow_Mediator.
+                __FLOW_RATES)],
+                host + f_idx, pr_generator.next())
                 self._m_processes[host + f_idx].start() # start a flow
 
 
     '''
     Helper method that returns a tuple of
-    flows for each type of the flows.
+    flows for each type of flows.
     '''
     def _get_nums_of_flows(self, num_hosts):
         num_of_flow_types = len(Flow_Mediator.__FLOW_SIZES)
-        num_flows = [0]*num_of_flow_types    # geta list that stores nums
+        num_flows = [0]*num_of_flow_types    # get a list that stores nums
 
         for idx in xrange(num_of_flow_types - 1):
             num_flows[idx] = int(math.ceil(Flow_Mediator.__FLOW_PROBS[idx]*Flow_Mediator.__NUN_OF_STATIC_FLOWS))
@@ -118,6 +126,27 @@ class Flow_Mediator(object):
 
         # returns an array of flows
         return host_flows
+
+    '''
+    A helper to generate priorities for the flows
+    '''
+    def _get_flow_priority(self):
+        # generate a number for each priority
+        num_for_prior = [int(prob_pr * Flow_Mediator.
+                         __NUM_OF_STATIC_FLOWS) for prob_pr in
+                        Flow_Mediator.__FLOW_PRIORITY_PROB]
+        # since int truncates floating point values, add
+        # the remaining values to the lowest priority
+        num_for_prior[0] += (Flow_Mediator.__NUM_OF_STATIC_FLOWS -
+                            sum(num_for_prior))
+
+        # generate a priority per request
+        for pr in Flow_Mediator.__FLOW_PRIORITIES:
+            # for each priority
+            for _ in xrange(num_for_prior[pr]):
+                yield pr
+
+
 
     '''
     Methods runs an infinite loop so that it could
@@ -151,7 +180,6 @@ class Flow_Mediator(object):
                     self.kill_processes()
 
             # By using RPC, send the lists to the RL server
-            # TO DO
             param_list = [self._m_controller.get_controller_address(), send_wait_flows, send_done_flows]
             self._m_proxy.pass_flow_info(param_list)
 
