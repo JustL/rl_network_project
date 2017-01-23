@@ -1,1 +1,1 @@
-__all__ = ["deep_q_rl"]
+__all__ = ["deep_plicy_grad_rl"]

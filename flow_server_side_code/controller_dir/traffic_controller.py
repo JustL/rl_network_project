@@ -90,14 +90,18 @@ class Traffic_Controller(Flow_Controller):
     def stop(self):
         # since trying stopping an object that runs on another
         # thread, an excpetion might occur
+        # This, however, should never happen since
+        # only one thread can run at a time in the current
+        # Python implementation
         try:
-            self._m_server.shutdown() # close the server
-            self._m_close()           # clean up the server
+            self._m_server.shutdown()      # close the server
+            self._m_server.close_server()  # clean up the server
         except RuntimeError:
             pass
 
         except Exception as exp:
             print 'In traffic_controller a different type of exception:', exp.message
+
 
     '''
     Public method used for getting the server's address.
@@ -107,6 +111,9 @@ class Traffic_Controller(Flow_Controller):
     '''
     def get_controller_address(self):
         # returns the tuple of IPv4 address
+        # Because of the current implementation of Python,
+        # no locking is needed. Only one thread can run at
+        # a time.
         return self._m_server.server_address
 
 

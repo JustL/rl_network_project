@@ -42,3 +42,14 @@ class RL_Flow_Learning(object):
         pass
 
 
+
+    '''
+    An interface for a remote server to unregister itslef
+    from a reinforcement learning model's update list.
+
+    Args:
+        ip_address : ip of a remote server
+
+    '''
+    def unregister_from_learning(self, ip_address):
+        pass

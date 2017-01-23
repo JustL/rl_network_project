@@ -1,16 +1,21 @@
 from interface_dir.rl_flow_learning import RL_Flow_Learning
 
 
-class Deep_Q_RL(RL_Flow_Learning):
+
+
+class Deep_Policy_Grad_RL(RL_Flow_Learning):
     '''
     Class describes the particular deep learning
     method used for traffic engineering. The chosen
     algorith is based on previous experience and also
-    is chosen for simplicyt and popularity.
+    is chosen for simplicity and popularity.
     '''
 
     def __init__(self):
         super.__init__(self)
+        # create a map that stores Ip addresesses of servers
+        self._m_servers = {}
+
 
 
     '''
@@ -99,4 +104,27 @@ class Deep_Q_RL(RL_Flow_Learning):
         running flows and completed flows
     '''
     def pass_data_for_learning(self, updates):
-        pass
+        ip_address, wait_flows, completed_flows = updates
+
+        if ip_address not in self._m_servers:
+            self._m_servers[ip_address] = None
+
+
+    '''
+    Public method used by a remote server to remove itself
+    from this model's server list. In other words, a remote
+    server calls this method when it wants to stop sending
+    its updates to the model.
+
+    Args:
+        ip_address : ip address of a remote server
+
+    Return:
+        returns the state of a successful deletion
+    '''
+    def unregister_from_learning(self, ip_address):
+        if ip_address in self._m_servers:
+            # if the passed ip has been registered within
+            # this model, delete it -- unregister it.
+            del self._m_servers[ip_address]
+

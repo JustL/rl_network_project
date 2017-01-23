@@ -64,7 +64,7 @@ class Flow_Mediator(object):
         # try to connect to the remote rl server
         try:
             self._m_proxy = xmlrpclib.ServerProxy("http://" + rl_server[0] + ":" + str(rl_server[1]))
-            self._m_proxy.test_connection()    # this method does nothing. It is only used for testing the connection
+            self._m_proxy.test_connection() # this call does nothing. It is only used for testing the connection.
         except xmlrpclib.Fault as err:
             print "A fault has occurred"
             print "Fault code: %d" % err.faultCode
@@ -167,12 +167,16 @@ class Flow_Mediator(object):
 
             # Wait untill all the processes stop
             for prc in self._m_processes:
-                while(prc.is_alive()):
-                    pass
+                prc.join()
+
 
             # In addition to killing the started flow processes,
-            # stop running the controller.
+            # stop running the traffic controller.
             self._m_controller.stop()
+
+            # Before stopping the Flow_Mediator,
+            # notify the remote rl server about it.
+            self._m_proxy.unregister_server(self._m_controller.get_controller_address())
 
             sys.exit(0) # stop executing this process
 
