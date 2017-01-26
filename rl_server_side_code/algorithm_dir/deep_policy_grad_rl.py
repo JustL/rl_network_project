@@ -1,21 +1,105 @@
-from interface_dir.rl_flow_learning import RL_Flow_Learning
+from interface_dir.rl_flow_learning import RL_Flow_Algorithm
+
+from keras.models import Sequential, model_from_json
+from keras.layers import Dense, Activation
+import keras.backend as Backend
+
+import json
+
+# these constants are used for updating the learning algorithm
+SYSTEM_POSITIVE_REWARD = 1
+SYSTEM_NEGATIVE_REWARD = -1
+
+class RL_Reward_Struct(object):
+    '''
+    Can be considered as a C struct
+    that stores a tuple of values -
+    previous reward, total reward,
+    counter.
+    '''
+
+    def __init__(self):
+        self.m_prev_reward = 0.0   # a rate of size/time
+        self.m_total_reward = 0    # signed int since reward is either -1 or +1
+        self.m_count = 0
+
+    '''
+    Once a new sample is received, update
+    this strucutre so that future rewards
+    and baselines could be computed.
+
+    Args:
+        reward : either -1 or +1 that indicates if the system has done better or worse
+                 as compared with previous updates.
+    '''
+    def update_reward(self, reward):
+        # if an overflow is possible,
+        # try to avoid it
+        if self.m_count > 0 and (self.m_count + 1) < 0: # means an overflow occurs
+            # for now don't do anything fancy since since an overflow
+            # implies that there have already been many updates to
+            # this structure and convergence (nearly optimal solution)
+            # is likely achieved.
+            self.m_count  = 0
+            self.m_total_reward = 0.0
+
+        self.m_total_reward += reward   # total reward is updated for baseline
+        self.m_prev_reward   = reward   # previous reward is reset
+        self.m_count        += 1        # one more reward received
+
+    '''
+    Previous reward is needed for checking if
+    the system (flows) have done better as compared
+    with the previous update.
+
+    return:
+        the rate of previous system update (total_flow_size) / (total_flow_completion_time)
+    '''
+    def get_prev_reward(self):
+        return self.m_prev_reward
 
 
 
+    '''
+    An importan method since returns for Monte-Carlo methods
+    an unbiased estimate. The baseline is important to reduce
+    the variance of a Policy Gradient method.
 
-class Deep_Policy_Grad_RL(RL_Flow_Learning):
+    return:
+        baseline -- mean of all previous rewards
+    '''
+    def get_baseline(self):
+        if self.m_count == 0:
+            return 0.0
+
+        return (self.m_total_reward * 1.0) / self.m_count
+
+
+
+class Deep_Policy_Grad_RL(RL_Flow_Algorithm):
+
+    # Hyperparameters
+    __NO_OF_HIDDEN_UNITS = 5          # number that determines how many hidden units are there
+    __NO_OF_ACTIONS      = 12         # num of classes = #of priorities * #of rates
+    __NO_OF_FEATURES     = 70         # number of features a sample has (taken from both )
+                                      # types of flow - finished and running/waiting)
     '''
     Class describes the particular deep learning
     method used for traffic engineering. The chosen
     algorith is based on previous experience and also
     is chosen for simplicity and popularity.
+    A Polic Gradient method is chosen and at first
+    only one hidden layer is considered
     '''
 
     def __init__(self):
         super.__init__(self)
         # create a map that stores Ip addresesses of servers
-        self._m_servers = {}
-
+        self._m_servers = {}       # dictionary that stores RL_Reward_Structs for each server
+        self._m_model = None       # the deep neural network
+        self._m_struct = None      # a struct that stores learning statistics about a server
+        self._m_reward = 0.0       # current reward (either SYSTEM_POSITVE_REWARD or
+                                   # SYSTEM_NEFATIVE_REWARD)
 
 
     '''
@@ -26,14 +110,14 @@ class Deep_Policy_Grad_RL(RL_Flow_Learning):
     Args :
          init_file : a file that stores a pre-trained model
     '''
-    def start_model(self, init_file=None):
-        if init_file is None:
+    def start_model(self, model_file=None, weight_file=None):
+        if model_file is None:
             # initialize the model from scratch -- using some techniques
             self._init_from_scratch()
 
         else:
             # load a pre-trained model from a file
-            self._init_from_file(init_file)
+            self._init_from_file(model_file, weight_file)
 
 
     '''
@@ -42,7 +126,24 @@ class Deep_Policy_Grad_RL(RL_Flow_Learning):
     the same ML family.
     '''
     def _init_from_scratch(self):
-        pass
+        # real neural network that represents the policy
+        self._m_model = Sequential([
+                        Dense(Deep_Policy_Grad_RL.__NO_OF_HIDDEN_UNITS,
+                        input_dim=Deep_Policy_Grad_RL.__NO_OF_FEATURES),
+                        Activation('relu'),
+                        Dense(Deep_Policy_Grad_RL.__NO_OF_ACTIONS),
+                        Activation('softmax')
+                        ])
+
+
+        # configure the model:
+        #      set omptimizer;
+        #      set loss function;
+        #      set metrics.
+        self._m_model.compile(omptimizer='sdg',
+                             loss=self.loss_function,
+                             metrics=['accuracy'])
+
 
 
     '''
@@ -53,8 +154,55 @@ class Deep_Policy_Grad_RL(RL_Flow_Learning):
     Args:
         file : a file that stores a pre-trained model
     '''
-    def _ini_from_file(self, init_file):
-        pass
+    def _init_from_file(self, model_file, weight_file):
+
+        self._m_model = model_from_json(self._load_from_json(model_file))
+
+        if weight_file is not None and isinstance(weight_file, str):
+        # if the weights have been saved too,
+        # load them
+            self._m_model.load_weights(weight_file, by_name=False)
+
+
+    '''
+    Method reads a json string from a file
+    and returns it
+
+    Args:
+        model_filename : JSON file that stores the model to be loaded
+    '''
+    def _load_from_json(self, model_filename):
+
+        if not isinstance(model_filename, str) or model_filename[-5 : ] != '.json':
+            raise RuntimeError("Cannot load from a non-JSON file")
+
+        json_string = None # initiailize the string to nothing
+        with open(model_filename) as json_file:
+            json_string = json.loads(json_file)
+
+        return json_string
+
+
+    '''
+    The loss function used by the model
+    to update neural net parameters.
+
+    It was found that a good loss function is:
+
+    func = - log(pi(s_t, a_t))* [v_t - baseline]  -- minimize this
+    objective func <=> maximize expected reward
+    '''
+    def loss_function(self, y_true, y_pred):
+
+        if self._m_struct is None:
+            # no mean computed yet
+            return -Backend.log(y_pred)*self._m_reward
+
+        return -Backend.log(y_pred)*(self._m_reward -
+                self._m_struct.get_baseiline())
+
+
+
 
 
     '''
@@ -62,36 +210,52 @@ class Deep_Policy_Grad_RL(RL_Flow_Learning):
     and saves the model if a file is provided.
 
     Args:
-        save_file : a file that will store the model
+        model_file : a file that will store the model
+        weight_file : a file that stores the weights
     '''
-    def stop_model(self, save_file=None):
-        if save_file is None:
-            # no need to save the model, do some basic
-            # changes
-            self._handle_model()
-        else:
-            # save the trained model to the proved file
-            self._save_model(save_file)
+    def stop_model(self, model_file=None, weight_file=None):
+        if model_file is not None:
+            # save the trained model to the provided file(s)
+            self._save_model(model_file, weight_file)
+
+        # finish the model by cleaning up allocated structures
+        self._handle_model()
+
+
 
     '''
     Method handles some basic background complexities of the model
     '''
     def _handle_model(self):
-        pass
+        # clean the data structures
+        self._m_servers = {}
+        self._m_model = None
+
+
 
     '''
     Method saves the model and handles some basic
     background complexities.
 
     Args:
-        save_file : file that stores the trained model
+        model_file : file that stores the model (.json)
+        weight_file : file that saves weights
     '''
-    def _save_model(self, save_file):
-        # do some work in order to save
-        # TODO
+    def _save_model(self, model_file, weight_file):
 
-        # call basic handling
-        self._handle_model()
+        # first check if a JSON file has been passed as
+        # only JSOn format is supported
+        if not isinstance(model_file, str)  or model_file[-5 : 0] != '.json':
+            raise RuntimeError("Cannot save to a non_JSON file and strings must be provided as file paths")
+
+        if weight_file is not None and isinstance(weight_file, str): # if a file passed to save weights, them them
+            self._m_model.save_weights(weight_file)
+
+        json_model = self._m_model.to_json()   # save as a json string
+
+        with open(model_file) as json_data:
+            json.dumps(json_data, json_model)
+
 
     '''
     Core method of the class since it uses the model

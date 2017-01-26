@@ -15,6 +15,7 @@ to th 'rl_server_side_code' directory.
 from flow_dir.flow_handler import Flow_Handler
 from flow_dir.flow_impl import RL_Wait_Flow
 from interface_dir.flow_controller import Flow_Controller
+from interface_dir.flow_interfaces import WAIT_FLOW_VALID
 
 
 # standard library imputs
@@ -160,7 +161,7 @@ class Flow_Mediator(object):
             send_wait_flows = []             # a list of waiting flows
             for wait_flow in self._m_arr:
                 # append only valid flows (running/waiting flows)
-                if send_wait_flows.is_valid() != 0:
+                if send_wait_flows.is_valid() == WAIT_FLOW_VALID:
                     send_wait_flows.append(wait_flow.get_attributes())
 
             # done copying running/waiting flows

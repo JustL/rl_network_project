@@ -1,1 +1,1 @@
-__all__ = ["rl_flow_learning"]
+__all__ = ["rl_flow_algorithm"]

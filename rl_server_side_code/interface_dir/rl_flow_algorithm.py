@@ -5,7 +5,7 @@ should be implemented by concrete reinforcement learning models.
 '''
 
 
-class RL_Flow_Learning(object):
+class RL_Flow_Algorithm(object):
 
     '''
     Interface for initialing a reinforcemnt learning
@@ -14,9 +14,11 @@ class RL_Flow_Learning(object):
     calling this method, the neural net would be
     initialized in a conrete class.
 
-    Args : init_file : a file where the model is saved.
+    Args :
+        model_file : a file where the model is saved.
+        weight_file : a file that stores the weights
     '''
-    def start_model(self, init_file=None):
+    def start_model(self, model_file=None, weight_file=None):
         pass
 
 
@@ -27,9 +29,10 @@ class RL_Flow_Learning(object):
     on. The taken steps only dpend on the conrete class.
 
     Args:
-        save_file : a file that will store the model
+        model_file : a file that will store the model
+        weight_file : a file that stores the weights
     '''
-    def stop_model(self, save_file=None):
+    def stop_model(self, model_file=None, weight_file=None):
         pass
 
 

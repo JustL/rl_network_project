@@ -9,6 +9,12 @@
 
 from ctypes import Structure
 
+
+# some global constants for setting/checking the state
+# of a running flow.
+WAIT_FLOW_VALID = 1
+WAIT_FLOW_INVALID = 0
+
 '''
  An Interface for an incomplete flow.
  The derived classes implement the provided

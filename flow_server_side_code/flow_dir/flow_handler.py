@@ -12,6 +12,8 @@
 
 from GS_timing import micros # for precise time measurements
 from flow_impl import RL_Compl_Flow
+from interface_dir.flow_interfaces import WAIT_FLOW_VALID, WAIT_FLOW_INVALID
+
 from multiprocessing import Process
 from socket import AF_INET, SOCK_STREAM, IPPROTO_TCP, SOL_SOCKET
 import time
@@ -111,13 +113,13 @@ class Flow_Handler(Process):
     def _register_for_flow(self):
         attr = (self._m_size, self._m_priority, self._m_rate)  # create a tuple and pass it to the shared waiting flow array
         self._m_arr[self._m_index].set_attributes(attr)
-        self._m_arr[self._m_index].set_valid(1)                # waiting flow
+        self._m_arr[self._m_index].set_valid(WAIT_FLOW_VALID)   # waiting flow
 
     '''
     Method notifies the Flow_Medaitor that the flow has completed
     '''
     def _unregister_for_flow(self, flow_cmpl_time):
-        self._m_arr[self._m_index].set_valid(0) # unvalid field
+        self._m_arr[self._m_index].set_valid(WAIT_FLOW_INVALID) # unvalid field
         self._m_queue.put(RL_Compl_Flow(flow_cmpl_time, self._m_size, self._m_priority, self._m_rate))# flow has been completed
 
     '''
