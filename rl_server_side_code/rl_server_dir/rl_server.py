@@ -1,6 +1,3 @@
-# custom imports
-from interface_dir.rl_flow_learning import RL_Flow_Learning
-
 # std library
 import SimpleXMLRPCServer
 import threading
@@ -91,12 +88,13 @@ class RL_Server(object):
 
     def __init__(self, ip_address, model):
         self._m_server = SimpleXMLRPCServer.SimpleXMLRPCServer(ip_address)           # this server executes updates
-        self.m_event = threading.Event() # for notifying the other thread
+        self._m_event = threading.Event() # for notifying the other thread
         self._m_batch_queue = Queue(RL_Server.__MAX_WAIT_TASKS) # model data
         self._m_clean_ips = Queue(RL_Server.__MAX_WAIT_TASKS) # a queue of ip addresses that have to be removed from the model's algorithm
         # computation is run on a separate thread
         self._m_comp_thread = threading.Thread(target=model_run_function,
               args=(model, self._m_batch_queue, self._m_event, self._m_clean_ips))
+        self._m_comp_thread.start() # start running the thread
 
     '''
     An interface that the RPC server owned by this class
@@ -138,6 +136,18 @@ class RL_Server(object):
         self._m_clean_ips.put(ip_address, True) # use blocking put
 
 
+
+    '''
+    Method called to run an infinite loop
+    in order to put the server in a waiting
+    state.
+    '''
+    def start_server(self):
+        while 1:
+            pass
+
+
+
     '''
     This method is called when this server
     is being stopped.
@@ -148,11 +158,8 @@ class RL_Server(object):
             self._m_event.set()
             self._m_comp_thread.join()
 
-        except RuntimeError as exp:
-            print 'RL_Server:', exp.strerror
+
+        except RuntimeError:
+            raise
 
 
-
-if __name__ == '__main__':
-    rl = RL_Flow_Learning()
-    pass

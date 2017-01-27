@@ -1,4 +1,4 @@
-from interface_dir.rl_flow_learning import RL_Flow_Algorithm
+from  interface_dir.rl_flow_algorithm import RL_Flow_Algorithm
 
 from keras.models import Sequential, model_from_json
 from keras.layers import Dense, Activation
@@ -136,7 +136,7 @@ class Deep_Policy_Grad_RL(RL_Flow_Algorithm):
     '''
 
     def __init__(self):
-        super.__init__(self)
+        RL_Flow_Algorithm.__init__(self)
         # create a map that stores Ip addresesses of servers
         self._m_servers = {}       # dictionary that stores RL_Reward_Structs for each server
         self._m_model = None       # the deep neural network
@@ -187,7 +187,7 @@ class Deep_Policy_Grad_RL(RL_Flow_Algorithm):
         #      set omptimizer;
         #      set loss function;
         #      set metrics.
-        self._m_model.compile(optimizer='sdg',
+        self._m_model.compile(optimizer='sgd',
                              loss=self.loss_function,
                              metrics=['accuracy'])
 
