@@ -450,7 +450,7 @@ class Deep_Policy_Grad_RL(RL_Flow_Algorithm):
        # send the received value to the remote server
        client = None
        try:
-           client = xmlrpclib.ServerProxy(server_address[0] + ":" + str(server_address[1]))
+           client = xmlrpclib.ServerProxy("http://" + server_address[0] + ":" + str(server_address[1]))
            # send an update
            client.update_flow_parameters(Deep_Policy_Grad_RL.__ACTION_SPACE[act_index])
        except RuntimeError:
