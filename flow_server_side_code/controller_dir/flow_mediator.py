@@ -181,7 +181,13 @@ class Flow_Mediator(object):
                     self.kill_processes()
 
             # By using RPC, send the lists to the RL server
-            param_list = [self._m_controller.get_controller_address(), send_wait_flows, send_done_flows]
+
+            # this cannot happen in the first prototype, but it
+            # might happen later
+            if not send_wait_flows and not send_done_flows:
+                continue
+
+            param_list = (self._m_controller.get_controller_address(), send_wait_flows, send_done_flows)
             self._m_proxy.pass_flow_info(param_list)
 
         '''

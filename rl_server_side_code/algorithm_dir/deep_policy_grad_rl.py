@@ -4,7 +4,12 @@ from keras.models import Sequential, model_from_json
 from keras.layers import Dense, Activation
 import keras.backend as Backend
 
+
+import numpy
+
 import json
+import xmlrpclib
+
 
 # these constants are used for updating the learning algorithm
 SYSTEM_POSITIVE_REWARD = 1
@@ -18,10 +23,14 @@ class RL_Reward_Struct(object):
     counter.
     '''
 
-    def __init__(self):
-        self.m_prev_reward = 0.0   # a rate of size/time
+    def __init__(self, pred=None):
+        self.m_prev_rate = 1.0   # a rate of size/time
         self.m_total_reward = 0    # signed int since reward is either -1 or +1
         self.m_count = 0
+        self.m_prev_pred = pred   # stores previous prediction
+                                  # It is needed to store this since
+                                  # the reward is received in the next
+                                  # update
 
     '''
     Once a new sample is received, update
@@ -32,7 +41,7 @@ class RL_Reward_Struct(object):
         reward : either -1 or +1 that indicates if the system has done better or worse
                  as compared with previous updates.
     '''
-    def update_reward(self, reward):
+    def update_reward(self, reward, rate):
         # if an overflow is possible,
         # try to avoid it
         if self.m_count > 0 and (self.m_count + 1) < 0: # means an overflow occurs
@@ -41,10 +50,12 @@ class RL_Reward_Struct(object):
             # this structure and convergence (nearly optimal solution)
             # is likely achieved.
             self.m_count  = 0
-            self.m_total_reward = 0.0
+            self.m_total_reward = 0
 
-        self.m_total_reward += reward   # total reward is updated for baseline
-        self.m_prev_reward   = reward   # previous reward is reset
+        self.m_total_reward += reward   # total reward is
+                                        # updated for baseline
+
+        self.m_prev_rate   = rate       # previous reward is reset
         self.m_count        += 1        # one more reward received
 
     '''
@@ -55,10 +66,21 @@ class RL_Reward_Struct(object):
     return:
         the rate of previous system update (total_flow_size) / (total_flow_completion_time)
     '''
-    def get_prev_reward(self):
-        return self.m_prev_reward
+    def get_prev_rate(self):
+        return self.m_prev_rate
+
+    '''
+    Returns previous predicitons
+    '''
+    def get_prev_pred(self):
+        return self.m_prev_pred
 
 
+    '''
+    Setter method for previous predictions
+    '''
+    def set_prev_pred(self, pred):
+        self.m_prev_pred = pred
 
     '''
     An importan method since returns for Monte-Carlo methods
@@ -78,11 +100,32 @@ class RL_Reward_Struct(object):
 
 class Deep_Policy_Grad_RL(RL_Flow_Algorithm):
 
+    # Actions {priority (int), rate (bits per second)}:
+    __ACTION_SPACE = [{"priority" : 1, "rate" : 100000},
+                 {"priority" : 1, "rate" : 200000},
+                 {"priority" : 2, "rate" : 100000},
+                 {"priority" : 2, "rate" : 200000},
+                 {"priority" : 3, "rate" : 100000},
+                 {"priority" : 3, "rate" : 200000},
+                 {"priority" : 4, "rate" : 100000},
+                 {"priority" : 4, "rate" : 200000},
+                 {"priority" : 5, "rate" : 100000},
+                 {"priority" : 5, "rate" : 200000},
+                 {"priority" : 6, "rate" : 100000},
+                 {"priority" : 6, "rate" : 200000}]
+
+
     # Hyperparameters
-    __NO_OF_HIDDEN_UNITS = 5          # number that determines how many hidden units are there
-    __NO_OF_ACTIONS      = 12         # num of classes = #of priorities * #of rates
-    __NO_OF_FEATURES     = 70         # number of features a sample has (taken from both )
-                                      # types of flow - finished and running/waiting)
+    __NO_OF_HIDDEN_UNITS = 5          # number that determines how many
+                                      # hidden units are there
+
+    __NO_OF_ACTIONS      = 12         # num of classes =  num of
+                                      # priorities * (num of rates)
+
+    __NO_OF_FEATURES     = 70         # number of features a sample has
+                                      # (taken from both )
+                                      # types of flow - finished and
+                                      # running/waiting)
     '''
     Class describes the particular deep learning
     method used for traffic engineering. The chosen
@@ -98,8 +141,12 @@ class Deep_Policy_Grad_RL(RL_Flow_Algorithm):
         self._m_servers = {}       # dictionary that stores RL_Reward_Structs for each server
         self._m_model = None       # the deep neural network
         self._m_struct = None      # a struct that stores learning statistics about a server
-        self._m_reward = 0.0       # current reward (either SYSTEM_POSITVE_REWARD or
+        self._m_reward = 0.0       # current reward
+                                   # (either SYSTEM_POSITVE_REWARD or
                                    # SYSTEM_NEFATIVE_REWARD)
+
+        self._m_epsilon = 0.5      # for the epsilon-greedy approach
+        self._m_time    = 1        # for updating epsilon
 
 
     '''
@@ -140,7 +187,7 @@ class Deep_Policy_Grad_RL(RL_Flow_Algorithm):
         #      set omptimizer;
         #      set loss function;
         #      set metrics.
-        self._m_model.compile(omptimizer='sdg',
+        self._m_model.compile(optimizer='sdg',
                              loss=self.loss_function,
                              metrics=['accuracy'])
 
@@ -163,6 +210,11 @@ class Deep_Policy_Grad_RL(RL_Flow_Algorithm):
         # load them
             self._m_model.load_weights(weight_file, by_name=False)
 
+        # a loaded model has to be compiled
+        self.compile(optimizer='sgd',
+                loss=self.loss_function,
+                metrics = ['accuracy'])
+
 
     '''
     Method reads a json string from a file
@@ -177,8 +229,8 @@ class Deep_Policy_Grad_RL(RL_Flow_Algorithm):
             raise RuntimeError("Cannot load from a non-JSON file")
 
         json_string = None # initiailize the string to nothing
-        with open(model_filename) as json_file:
-            json_string = json.loads(json_file)
+        with open(model_filename, 'r') as json_file:
+            json_string = json.load(json_file, encoding='utf-8')
 
         return json_string
 
@@ -253,8 +305,8 @@ class Deep_Policy_Grad_RL(RL_Flow_Algorithm):
 
         json_model = self._m_model.to_json()   # save as a json string
 
-        with open(model_file) as json_data:
-            json.dumps(json_data, json_model)
+        with open(model_file, 'w') as json_file:
+            json.dump(json_model, json_file, encoding='utf-8')
 
 
     '''
@@ -271,7 +323,156 @@ class Deep_Policy_Grad_RL(RL_Flow_Algorithm):
         ip_address, wait_flows, completed_flows = updates
 
         if ip_address not in self._m_servers:
-            self._m_servers[ip_address] = None
+            # a new server sends a request, allocate a new
+            #flow info struct for it
+            self._m_servers[ip_address] = RL_Reward_Struct(numpy.zeros((1, Deep_Policy_Grad_RL.__NUM_OF_ACTIONS), dtype=numpy.float32))
+
+        # first the received reward has to be computed
+        self._m_struct = self._m_servers[ip_address]
+        self._compute_reward(completed_flows)
+
+        # since for this case only the number dedined by
+        # __NUM_OF_FEATURES determines how many flows are
+        # considered per flow, need to pad or cut some flows
+        features =  self._preprocess_flows(wait_flows,
+                                      completed_flows)
+
+
+        # use the neural net for making a decision
+        self._make_decision(features, ip_address)
+
+
+    '''
+    Method takes all flows passed by a server and preprocess
+    them so that a fixed number of flows only is considered.
+    So padding or cut of might be applied.
+
+    Args:
+        wait_flows : waiting/running flows on a server
+        completed_flows : completed flows on a server
+
+
+    return:
+        features that can be passed to a neural net
+    '''
+    def _preprocess_flows(self, wait_flows, completed_flows):
+        # considered to take the same number of wait and
+        # completed flows first.
+        # How the below steps are implemented should be clear
+        # after reading the flow_impl.py module from
+        # flow_server_side_code.
+        # Now taking 10 and 10 flows
+        if len(wait_flows) < 10:
+            # needs some padding
+            need_to_add = 10 - len(wait_flows)
+            for _ in xrange(need_to_add):
+                # add a tuple that represents
+                # a waiting/running flow
+                wait_flows.append((0, 0, 0.0))
+
+        # do the same thing with completed flows
+        if len(completed_flows) < 10:
+            need_to_add = 10 - len(completed_flows)
+            for x in xrange(need_to_add):
+                # keep adding the tuple that
+                # represemts a completed flow
+                completed_flows.append((0.0, 0, 0, 0.0))
+
+        wait = numpy.array(wait_flows[-10::1]).reshape(1, 10*len(wait_flows[-1]))
+        completed = numpy.array(completed_flows[-10::1].reshape(1, 10*len(completed_flows[-1])))
+
+        return numpy.append(wait, completed)
+
+
+
+    '''
+    The method takes all completed flows and updates
+    the objects (model's) internal states such as
+    rewards, baselines.
+
+    Args :
+        flows : completed flows on a remote server
+    '''
+    def _compute_reward(self, flows):
+        if not flows:
+            return
+
+        # reward is computed by finding if the mean rate is
+        # higher than of the previous sample
+        cur_size =  0
+        cur_time =  0.0
+
+        for item in flows:
+            attr = item.get_attributes()
+            cur_size += attr[1]
+            cur_time += attr[0]
+
+        # compute a new reward
+        rate = (cur_size/cur_time)
+        self._m_reward = SYSTEM_POSITIVE_REWARD if (rate/self.m_struct.get_prev_rate()) >= 1.0 else SYSTEM_NEGATIVE_REWARD
+        self._m_struct.update_reward(self._m_reward, rate)
+
+
+    '''
+    Methods takes a state represented by completed and waiting/running
+    flows and computes probabilities for each of the actions.
+    The epsilon-greedy approach is taken since it's simple and
+    effective.
+
+    Args :
+        features : a numpy array that can be fed into a neural net
+        server_address : the IP of the server that needs to be updated
+    '''
+    def _make_decision(self, features, server_address):
+       predictions =  self._m_model.predict(x=features, batch_size=1, verbose=0)
+
+       act_index = 0
+       if self._m_time > 0:
+           # since epsilon-greedy is used, throw a die
+           # in order to choose the next action
+
+           if predictions[0].max() < (self._m_epsilon / self._m_time):
+               act_index = numpy.random.randint(low=0,
+                       high=Deep_Policy_Grad_RL.__NO_OF_ACTIONS,
+                       size=None, dtype=numpy.int)
+
+           else: # be greedy and choose the predicted value
+               act_index = predictions[0].argmax()
+
+           # update epsilon value
+           self._m_time = self._m_time + 1 if (self._m_time + 1) > 0 else 0
+           self._m_epsilon = (self._m_epsilon / self._m_time) if self._m_time != 0 else 0.0
+
+       else: # epsilon-greedy has converged
+            act_index = predictions[0].argmax() # always act greedy
+
+
+       # send the received value to the remote server
+       client = None
+       try:
+           client = xmlrpclib.ServerProxy(server_address[0] + ":" + str(server_address[1]))
+           # send an update
+           client.update_flow_parameters(Deep_Policy_Grad_RL.__ACTION_SPACE[act_index])
+       except RuntimeError:
+           pass
+
+       # train on the same data too and use previous
+       # labels
+       self._m_model.fit(features, self._m_struct.get_prev_pred(),
+               batch_size=1, nb_epoch=1, verbose=0)
+
+       # update prev predictions
+
+       prob = predictions[0][act_index]
+       predictions = numpy.zeros((1, Deep_Policy_Grad_RL.__NUM_OF_ACTIONS),
+               dtype=numpy.float32)
+       predictions[0][act_index] = prob
+       self._m_struct.set_prev_pred(predictions)
+
+       # update infor related to a particular server
+       del self._m_servers[server_address]
+       self._m_servers[server_address] = self._m_struct
+       self._m_struct = None
 
 
     '''

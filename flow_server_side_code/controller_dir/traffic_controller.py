@@ -150,7 +150,7 @@ class Traffic_Controller(Flow_Controller):
     '''
     def _update_traffic_flow(self, if_idx, params):
 
-        class_idx = 0x10000 + params["priority"] % Traffic_Controller.__PRIOTIY_LIMIT + 1 # since priority [0, 6] ==> classes [1, PRIORITY_LIMIT]
+        class_idx = 0x10000 + params["priority"] # since priority [1, 6]
         rate = params["rate"]
         parent = 0x10000
 
