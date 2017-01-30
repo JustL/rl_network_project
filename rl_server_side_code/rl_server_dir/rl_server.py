@@ -13,6 +13,8 @@ Args:
     task_queue : a queue that stores all available flows
 '''
 def model_run_function(model, task_queue, term_event, clean_ip_queue):
+
+    model.start_model()            # start the model == initialize it
     local_copy = []                # the list keeps local copy of tasks
     ips_to_remove = []             # list for unregistering from updates
 
@@ -88,15 +90,17 @@ class RL_Server(object):
     __MAX_WAIT_TASKS = 4     # max number of batches that a model can handle
 
     def __init__(self, ip_address, model):
+
         self._m_server = SimpleXMLRPCServer.SimpleXMLRPCServer((ip_address, RL_Server.__RL_SERVER_PORT_NUM))
         # this server executes updates
+
         self._m_event = threading.Event() # for notifying the other thread
         self._m_batch_queue = Queue(RL_Server.__MAX_WAIT_TASKS) # model data
         self._m_clean_ips = Queue(RL_Server.__MAX_WAIT_TASKS) # a queue of ip addresses that have to be removed from the model's algorithm
         # computation is run on a separate thread
         self._m_comp_thread = threading.Thread(target=model_run_function,
               args=(model, self._m_batch_queue, self._m_event, self._m_clean_ips))
-        self._m_comp_thread.start() # start running the thread
+        # self._m_comp_thread.start() # start running the thread
 
     '''
     An interface that the RPC server owned by this class
@@ -112,8 +116,9 @@ class RL_Server(object):
     def pass_flow_info(self, train_batch):
 
         # enqueue the new batch on the processor queue
-        self._m_batch_queue(train_batch, True) # use blocking call
+        self._m_batch_queue.put(train_batch, True) # use blocking call
 
+        return 'a'
 
     '''
     For testing a connection only.
@@ -122,7 +127,7 @@ class RL_Server(object):
     '''
 
     def test_connection(self):
-        pass
+        return 'a'
 
 
     '''
@@ -145,8 +150,14 @@ class RL_Server(object):
     state.
     '''
     def start_server(self):
-        while 1:
-            pass
+         # register required functions
+         self._m_server.register_function(self.test_connection,
+                 "test_connection")
+         self._m_server.register_function(self.pass_flow_info,
+                 "pass_flow_info")
+
+         self._m_comp_thread.start()    # start the comp thread
+         self._m_server.serve_forever() # run the server
 
 
 
@@ -160,7 +171,10 @@ class RL_Server(object):
             self._m_event.set()
             self._m_comp_thread.join()
 
-
+            # stop the server and release all
+            # allocated resources
+            self._m_server.shutdown()
+            self._m_server.close()
         except RuntimeError:
             raise
 

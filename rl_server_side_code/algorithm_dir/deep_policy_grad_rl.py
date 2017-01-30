@@ -325,7 +325,9 @@ class Deep_Policy_Grad_RL(RL_Flow_Algorithm):
         if ip_address not in self._m_servers:
             # a new server sends a request, allocate a new
             #flow info struct for it
-            self._m_servers[ip_address] = RL_Reward_Struct(numpy.zeros((1, Deep_Policy_Grad_RL.__NUM_OF_ACTIONS), dtype=numpy.float32))
+            self._m_servers[ip_address] = RL_Reward_Struct(numpy.zeros((1,
+                Deep_Policy_Grad_RL.__NUM_OF_ACTIONS),
+                dtype=numpy.float32))
 
         # first the received reward has to be computed
         self._m_struct = self._m_servers[ip_address]
