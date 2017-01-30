@@ -83,11 +83,13 @@ class RL_Server(object):
     Input parameters   : completed flows (FCT, size, priority),
                          waiting/running flows (size, priority)
     '''
-
+    __RL_SERVER_PORT_NUM = 32202 # global constant that should be used
+                               # to run an rl server
     __MAX_WAIT_TASKS = 4     # max number of batches that a model can handle
 
     def __init__(self, ip_address, model):
-        self._m_server = SimpleXMLRPCServer.SimpleXMLRPCServer(ip_address)           # this server executes updates
+        self._m_server = SimpleXMLRPCServer.SimpleXMLRPCServer((ip_address, RL_Server.__RL_SERVER_PORT_NUM))
+        # this server executes updates
         self._m_event = threading.Event() # for notifying the other thread
         self._m_batch_queue = Queue(RL_Server.__MAX_WAIT_TASKS) # model data
         self._m_clean_ips = Queue(RL_Server.__MAX_WAIT_TASKS) # a queue of ip addresses that have to be removed from the model's algorithm

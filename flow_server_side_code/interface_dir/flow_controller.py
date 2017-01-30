@@ -6,8 +6,12 @@ The interface pwovides a few methods that are used by the remote
 flow controller and the local Flow_Mediator.
 '''
 
+
 class Flow_Controller(object):
 
+    # global controller port on which each controller should
+    # listen
+    CONTROLLER_PORT_NUM = 32100
     '''
     An interface to start the concrete class
     running the functionality.

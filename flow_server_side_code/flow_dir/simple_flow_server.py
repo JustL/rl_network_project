@@ -12,8 +12,9 @@ of this server is pretty bad.
 from flow_handler import PROTOCOL_SIGNAL, SO_PRIORITY
 from sock_addr_struct import Sockaddr_In
 
+import threading
 from multiprocessing import Process
-from socket import AF_INET, SOCK_STREAM, IPPROTO_TCP, SOL_SOCKET
+from socket import AF_INET, SOCK_STREAM, IPPROTO_TCP, SOL_SOCKET, socket as Socket
 import ctypes # for using native C data structures
 import sys
 
@@ -29,7 +30,7 @@ def sock_proc(client):
     libc = None
     try:
         libc = ctypes.CDLL("libc.so.6", use_errno=True)
-    except Exception:
+    except:
         return   # terminate this process
 
     # have loaded the C lib and sys calls, also have a ref to a socket
@@ -106,27 +107,22 @@ The server is designated to work on only Linux machines.
 '''
 class Simple_Flow_Server(object):
     __LISTEN_QUEUE   = 100       # number of waiting requests to connect
-    REPLY_PRIORITY = 6         # set all server priorities to
+    REPLY_PRIORITY = 6           # set all server priorities to
                                  # REPLY_PRIORITY so that the replies would
                                  # immediately sent back to the source server.
                                  # __REPLY_PRIORITY = HIGHEST_PRIORITY  - 1
                                  # (HIGHES_PRIORITY requires some permission)
 
     def __init__(self, ip_address='127.0.0.1',  port_num = 17850):
-        self._m_conns = []     # an empty list of current connections
-        self._m_procs = []     # an empty list of processes
+        self._m_conns = []               # an empty list of current
+                                         # connections
+        self._m_procs = []               # an empty list of processes
         self._m_ip    = (ip_address, port_num)
-
-
-        try:
-            # try to bind the socket to an interface
-            self._m_socket.bind((ip_address, port_num))
-        except Exception:
-            print 'Server failed binding its socket'
-            sys.exit(-1)
-
-        # sucessfully binded. Process further
-        self._m_socket.listen(Simple_Flow_Server.__LISTEN_QUEUE)
+        self._m_looping  = True          # a flag that tells the server to
+                                         # keep looping
+        self._m_lock = threading.Lock()  # a lock that protects data
+                                         # consistency withing this program
+        self._m_sockfd = None            # a socket file descriptor
 
     '''
     A public method that must be called before using
@@ -143,12 +139,12 @@ class Simple_Flow_Server(object):
         # construct a Linux socket
         try:
             (sockfd, libc) = self._init_linux_rec()
-        except Exception:
+        except:
             raise
 
         # run forever
         try:
-            while 1:
+            while self._m_looping:
                 # accept connections from other servers
                 client_sock = libc.accept(sockfd, 0, 0)
 
@@ -156,41 +152,78 @@ class Simple_Flow_Server(object):
                 if client_sock < 0:
                     continue  # ignore the rest of the code
 
+
                 # append the socket to the connection list
-                self._m_conns.append(client_sock)
+                # get a lock to modify the resources
+                with self._m_lock:
+                    if not self._m_looping: # check for the flag first
+                        break
 
-                # create a new process and append it to the list
-                prc = Process(target=sock_proc, args=(client_sock, ))
-                self._m_procs.append(prc)
-                prc.start()
+                    self._m_conns.append(client_sock)
 
-                # start over again
+                    # create a new process and append it to the list
+                    prc = Process(target=sock_proc, args=(client_sock, ))
+                    self._m_procs.append(prc)
+                    prc.start()
 
-        finally:  # server might be interrupted by an excpetion
-            self._stop_server() # close all connections
+                    # start over again
+
+        finally:  # server might be interrupted by an internal exception
+            if self._m_procs or self._m_conns:
+                self.stop_server() # close all connections
 
     '''
     Helper method to tear down all current connections
     and stop all running processes
     '''
-    def _stop_server(self):
-        # stopp all the started processes
-        for prc in self._m_procs:
-            prc.terminate()
-            prc.join() # wait until the process stops
+    def stop_server(self):
 
-        # all processes have been stopped
-        # close sockets
-        for conn in self._m_conns:
+        # this method can be called from a few threads so locking is needed
+        with self._m_lock:
+            # load  a new referece to the Linux system calls
+            # since the previous one might be used by another thread
+            libc = None
             try:
-                conn.shutdown()
-                conn.close()
-            except Exception:   # might raise an exception if the socket has already been closed
-                pass
+                libc = ctypes.CDLL("libc.so.6", use_errno=True)
+            except:
+                raise RuntimeError("'libc.so.6' could not be loaded")
 
-        # processes and sockets have been handled
-        self._m_conns = None
-        self._m_procs = None
+            self._m_looping = False # stop looping
+            # close all connections first
+            if self._m_conns:
+                for conn in self._m_conns:
+                    try:
+                        libc.close(conn)
+                    except: # an exception might be raised since closing
+                        # sockets that are handled by other processes
+                        pass
+
+            # stopp all the started processes
+            if self._m_procs:
+                for prc in self._m_procs:
+                    if prc.is_alive():
+                        prc.terminate()
+                        prc.join() # wait until the process stops
+
+
+            # processes and sockets have been handled
+            self._m_conns = None
+            self._m_procs = None
+            libc.close(self._m_sockfd) # close my own socket
+
+            # send some data to my own socket to terminate
+            # .accept system call
+            socket = None
+
+            try:
+                socket = Socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
+                socket.connect(self._m_ip) # this should throw an
+                                           # exception
+            except:
+                # exception should be thrown, so handle it
+                if socket:
+                    socket.close()
+
 
 
     '''
@@ -203,8 +236,8 @@ class Simple_Flow_Server(object):
 
         try:
             libc = ctypes.CDLL("libc.so.6", use_errno=True)
-        except Exception:
-             raise RuntimeError("'libc.so could not bea loaded'")
+        except:
+             raise RuntimeError("'libc.so could not be loaded'")
 
         # library and system calls have been loaded, use them to create
         # a TCP socket
@@ -228,7 +261,7 @@ class Simple_Flow_Server(object):
             raise RuntimeError("System error: cannot start listening")
 
         # done initializing the required Linux resources
-
+        self._m_sockfd = sockfd  # for clsosing this socket later
         return (sockfd, libc)
 
 

@@ -2,7 +2,9 @@ from interface_dir.flow_controller import Flow_Controller
 from SimpleXMLRPCServer import SimpleXMLRPCServer
 import threading
 import socket
-from pyroute2 import IPRoute, RTM_DELQDISC, RTM_NEWQDISC, RTM_NEWCLASS ,TC_H_ROOT, NetlinkError
+from pyroute2 import IPRoute
+from pyroute2.netlink.rtnl import RTM_DELQDISC, RTM_NEWQDISC, RTM_NEWTCLASS ,TC_H_ROOT
+from pyroute2.netlink import NetlinkError
 
 
 
@@ -69,7 +71,7 @@ class Traffic_Controller(Flow_Controller):
             # scheduling has been deleted, add htb
             try:
                 self._m_cntrl.tc(RTM_NEWQDISC, "htb", if_index, idx, default=0)
-            except Exception as exp:
+            except:
                 raise
 
 
@@ -99,8 +101,8 @@ class Traffic_Controller(Flow_Controller):
         except RuntimeError:
             pass
 
-        except Exception as exp:
-            print 'In traffic_controller a different type of exception:', exp.message
+        except:
+            raise
 
 
     '''
@@ -133,8 +135,8 @@ class Traffic_Controller(Flow_Controller):
         # check whether it is needed to retrieve the interface index
         # TO DO: now only one interface is supoorted. Improve in the
         # future
-        if self._m_server.server_address[0] in self._m_infs:
-            if_idx = self._m_infs[self._m_server.server_address[0]] # retrieve interface index
+        if self._m_server.server_address[0] in self._m_infcs:
+            if_idx = self._m_infcs[self._m_server.server_address[0]] # retrieve interface index
         else:
             # should never occur
             raise RuntimeError("Invalid interface.")
@@ -156,7 +158,7 @@ class Traffic_Controller(Flow_Controller):
 
         try:
             self._m_cntrl.tc(
-                    RTM_NEWCLASS, "htb", if_idx,
+                    RTM_NEWTCLASS, "htb", if_idx,
                     class_idx, parent=parent,
                     rate="{0}kbit".format(rate))
         except NetlinkError as exp:

@@ -11,10 +11,8 @@ to th 'rl_server_side_code' directory.
 '''
 
 
-# brlow imports are defined in this project
+# below imports are defined in this project
 from flow_dir.flow_handler import Flow_Handler
-from flow_dir.flow_impl import RL_Wait_Flow
-from interface_dir.flow_controller import Flow_Controller
 from interface_dir.flow_interfaces import WAIT_FLOW_VALID
 
 
@@ -43,11 +41,13 @@ class Flow_Mediator(object):
     the flows and the rl server to communicate with each others.
     '''
 
-    def __init__(self, rl_server, ip_addresses,  controller, wf_type, wf_lock):
+    def __init__(self, rl_server, ip_addresses,  controller, wf_type):
         self._m_proxy = None              # a connection to the RL server
         self._m_controller = controller   # for comminication with the local RPC
+        self._m_looping = True            # flag for temination
+
         # below array stores all the flows on this server (waiting/running flows)
-        self._m_arr = Array(type(wf_type), [type(wf_type)()]*Flow_Mediator.__NUM_OF_STATIC_FLOWS, lock=wf_lock)
+        self._m_arr = Array(type(wf_type), [type(wf_type)()]*Flow_Mediator.__NUM_OF_STATIC_FLOWS, lock=Lock())
         self._m_cm_flows = Queue() # the structure that stores completed flows
         self._m_processes = [None]*Flow_Mediator.__NUM_OF_STATIC_FLOWS
 
@@ -154,8 +154,10 @@ class Flow_Mediator(object):
     send updates to the RL server after a timeout expires.
     '''
     def start_updating(self):
-        while 1:
+        while self._m_looping:
             time.sleep(Flow_Mediator.__SLEEP_TIME) # sleep for a while
+            if not self._m_looping: # means another thread has closed
+                break;
 
             # the timeout has expired. Send updates to the remote server
             send_wait_flows = []             # a list of waiting flows
@@ -175,9 +177,8 @@ class Flow_Mediator(object):
                 except Empty:
                     # done dequeueing the queue
                     pass
-                except Exception as err:
-                    print 'Error dequeing the queue'
-                    print err.strerror
+                except:
+                    # some other exception occured
                     self.kill_processes()
 
             # By using RPC, send the lists to the RL server
@@ -188,22 +189,29 @@ class Flow_Mediator(object):
                 continue
 
             param_list = (self._m_controller.get_controller_address(), send_wait_flows, send_done_flows)
-            self._m_proxy.pass_flow_info(param_list)
+            try:
+                self._m_proxy.pass_flow_info(param_list)
+            except:
+                # means the proxy has been closed
+                self.kill_processes()
 
         '''
         Public method that closes sockets and kills all the processes.
         This method is only called when an exception poccurs
         '''
         def kill_processes(self):
+
+            # set a signal that it is over
+            self._m_looping = False
             # go over all the processes and close sockets.
             # In addition, terminate the process.
-            for prc in self._m_processes:
-                prc.terminate()
+            if self._m_processes:
+                for prc in self._m_processes:
+                    if prc.is_alive():
+                        prc.terminate()
+                        prc.join()
 
-            # Wait untill all the processes stop
-            for prc in self._m_processes:
-                prc.join()
-
+            self._m_processes = None # release resources
 
             # In addition to killing the started flow processes,
             # stop running the traffic controller.
@@ -211,23 +219,13 @@ class Flow_Mediator(object):
 
             # Before stopping the Flow_Mediator,
             # notify the remote rl server about it.
-            self._m_proxy.unregister_server(self._m_controller.get_controller_address())
+            try:
+                self._m_proxy.unregister_server(
+                        self._m_controller.get_controller_address())
+            except:
+               # remote rl server has been closed
+               pass # do nothing
 
-            sys.exit(0) # stop executing this process
 
 
-if __name__ == '__main__':
-    wait_flow_type = RL_Wait_Flow() # determines the C array's type
-    wait_flow_lock = Lock() # the lock used for shared memrory array
-    con = Flow_Controller(('127.0.0.1', 16850))
-    mediator = Flow_Mediator(('127.0.0.1', 16850), ('127.0.0.1', 8000), con, wait_flow_type,  wait_flow_lock)
-    # If the KeyboardInterrupt exception occurs, handle it
-    try:
-        mediator.start_updating()   # start running the flows
-    finally: # no matter what happens, try to release the resources
-        try:
-            mediator.kill_processes()
-        except Exception:
-            print 'Exception occurred while closing the mediator'
-            sys.exit(-1)
 
