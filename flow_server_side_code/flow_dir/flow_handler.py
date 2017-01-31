@@ -44,7 +44,7 @@ class Flow_Handler(Process):
 
 
     def __init__(self, ip_address,  cmp_queue, inc_arr, flow_size, flow_pref_rate, flow_index, flow_priority=0):
-        super.__init__(Flow_Handler, self)
+        super(Flow_Handler, self).__init__()
 
         self._m_rem_addr = ip_address        # the ipv4 address of a remote server (including the port number)
         self._m_queue = cmp_queue            # queue for passing completed flows
@@ -66,25 +66,33 @@ class Flow_Handler(Process):
 
         # load the C standard library and the Linux system calls
         try:
-            libc = ctypes.CDLL("lib.s0.6", use_errno=True)
+            libc = ctypes.CDLL("libc.so.6", use_errno=True)
         except :
              # no such library
-             raise RuntimeError("'lib.so.6' could not be loaded")
+             print "'libc.so.6' could not be loaded"
+             super(self).terminate()
 
         # try to create a socket
         sockfd = libc.socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
 
         if sockfd < 0:
-            raise RuntimeError("A new socket cannot be created")
+            print "A new socket cannot be created"
+            super(self).terminate()
+
+        # keep referece to the socket
+        self._m_socket = sockfd
 
         # try to set the priority for this new socket
         if libc.setsockopt(sockfd, SOL_SOCKET,
                            SO_PRIORITY, ctypes.byref
                            (self._m_priority), ctypes.sizeof
                            (self._m_priority)) < 0:
-            raise RuntimeError("The priority of the newly created socket cannot be modified")
+            print "The priority of the newly created socket",
+            print "cannot be modified"
+            libc.close(sockfd) # close socket
+            super(self).terminate()
 
-        # a new socket has been created and assigmed with a priority
+        # a new socket hass been created and assigmed with a priority
         # start working with the server address
 
         # strucutres that are used by Unix systems are used
@@ -101,7 +109,9 @@ class Flow_Handler(Process):
         # It is time to try to connect
         if libc.connect(sockfd, ctypes.byref(serv_addr),
                         ctypes.sizeof(serv_addr)) < 0:
-            raise RuntimeError("Socket could not connect to a remote server")
+            print "Socket could not connect to a remote server"
+            libc.close(sockfd)  # close socket first
+            super(self).terminate()
 
         # the below code generates a flow and keeps statistics about it.
         self._flow_data(sockfd, libc)
@@ -163,7 +173,9 @@ class Flow_Handler(Process):
           while total_sent < self._m_size: # send the entire flow
               sent_bytes = libc.send(sockfd, data[total_sent : ], self._m_size, 0)
               if sent_bytes  < 0:
-                  raise RuntimeError("socket connection broken")
+                  print "socket connection broken"
+                  libc.close(sockfd) # close socket
+                  super(self).terminate()
               total_sent += sent_bytes # update sent bytes by the number of sent bytes
 
           # the flow data has been sent
@@ -173,7 +185,9 @@ class Flow_Handler(Process):
           while total_sent < MSG_LEN:
               sent_bytes = libc.send(sockfd, TERM_MSG[total_sent : ], MSG_LEN, 0)
               if sent_bytes < 0:
-                  raise RuntimeError("socket connection broken")
+                  print "socket connection broken"
+                  libc.close(sockfd) # close socket
+                  super(self).terminate()
               total_sent += sent_bytes   # update counter
 
 
@@ -182,7 +196,9 @@ class Flow_Handler(Process):
               read_bytes = libc.recv(sockfd, chunk, CHUNK_SIZE-1, 0)
 
               if read_bytes < 0:
-                  raise RuntimeError("socket connection broken")
+                  print "socket connection broken"
+                  libc.close(sockfd) # close socket
+                  super(self).terminate()
               recv_data.append(chunk)  # update the received data
 
 
@@ -202,8 +218,15 @@ class Flow_Handler(Process):
     def _close_socket(self):
         # close socket so that the resources would be
         # deallocated as soon as possible.
-        self._m_socket.shutdown()
-        self._m_socket.close()
+        libc = None
+
+        # load the linux system calls
+        try:
+            libc = ctypes.CDLL("libc.so.6", use_errno=True)
+
+            libc.close(self._m_socket) # close socke # close socket
+        except:
+            pass
 
 
     '''

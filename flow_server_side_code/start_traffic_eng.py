@@ -49,11 +49,11 @@ if __name__ == "__main__":
     # been passed for running
     if len(sys.argv) < 4:
         print "Please pass more arguments.",
-        print "There must be at least three ip addresses:"
+        print "There must be at least three public ip addresses:"
         print "--- IPv4 of this server's interface;"
         print "--- Reinforcement learnig server address;"
-        print "--- One remote server address."
-        print "(e.g., '127.0.0.1' '143.125.15.13' '143.125.15.16')"
+        print "--- Remote server address(es)."
+        print "(e.g., 175.2.11.123  143.125.15.13  143.125.15.16  ...)"
         sys.exit(0)
 
 

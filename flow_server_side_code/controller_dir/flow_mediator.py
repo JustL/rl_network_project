@@ -48,8 +48,10 @@ class Flow_Mediator(object):
 
         # below array stores all the flows on this server (waiting/running flows)
         self._m_arr = Array(type(wf_type), [type(wf_type)()]*Flow_Mediator.__NUM_OF_STATIC_FLOWS, lock=Lock())
+
         self._m_cm_flows = Queue() # the structure that stores completed flows
         self._m_processes = [None]*Flow_Mediator.__NUM_OF_STATIC_FLOWS
+
 
         self._init_flows(rl_server, ip_addresses)
 
@@ -63,6 +65,7 @@ class Flow_Mediator(object):
 
         self._m_controller.start()         # start the traffic controller
 
+
         # try to connect to the remote rl server
         try:
             self._m_proxy = xmlrpclib.ServerProxy("http://" + rl_server[0] + ":" + str(rl_server[1]))
@@ -72,27 +75,35 @@ class Flow_Mediator(object):
             print "Fault code: %d" % err.faultCode
             print "Fault string: %s" % err.faultString
 
-            self._m_controller.stop()          # stop the controller
+            self._m_controller.stop()       # stop the controller
 
-            sys.exit(-1)            # error occurred
+            sys.exit(-1)                    # error occurred
+
+        except:
+            print "Some other exception related to RPC server"
+            self._m_controller.stop()
+            sys.exit(-1)
 
         # run a loop and create flows
         # get the number of flows for each flow size and remote host
         num_of_hosts  = len(ip_addresses)
         flows_per_host = self._get_nums_of_flows(num_of_hosts)
 
+
         # priority generator
         pr_generator = self._get_flow_priority()
 
+
         # loop through each of the flows and create a new Flow_Handler
-        for host in xrange(num_of_hosts):
+        for host in xrange(0, num_of_hosts, 1):
             # for each host create a few flows
-            for f_idx in xrange(len(flows_per_host[host])):
-                self._m_processes[host + f_idx] = Flow_Handler(ip_addresses[host], self._m_cm_flows,
-                self._m_arr, flows_per_host[host][f_idx],
-                Flow_Mediator.__FLOW_RATES[f_idx % len(Flow_Mediator.
-                __FLOW_RATES)],
-                host + f_idx, pr_generator.next())
+            for f_idx in xrange(0, len(flows_per_host[host]), 1):
+                self._m_processes[host + f_idx] = Flow_Handler(ip_address=ip_addresses[host], cmp_queue=self._m_cm_flows,
+                inc_arr=self._m_arr,
+                flow_size=flows_per_host[host][f_idx],
+                flow_pref_rate=Flow_Mediator.__FLOW_RATES[f_idx %
+                len(Flow_Mediator.__FLOW_RATES)],
+                flow_index=host + f_idx, flow_priority=pr_generator.next())
                 self._m_processes[host + f_idx].start() # start a flow
 
 
@@ -101,18 +112,24 @@ class Flow_Mediator(object):
     flows for each type of flows.
     '''
     def _get_nums_of_flows(self, num_hosts):
+
         num_of_flow_types = len(Flow_Mediator.__FLOW_SIZES)
         num_flows = [0]*num_of_flow_types    # get a list that stores nums
 
-        for idx in xrange(num_of_flow_types - 1):
-            num_flows[idx] = int(math.ceil(Flow_Mediator.__FLOW_PROBS[idx]*Flow_Mediator.__NUN_OF_STATIC_FLOWS))
+
+        for idx in xrange(0, num_of_flow_types - 1, 1):
+            num_flows[idx] = int(math.ceil(Flow_Mediator.__FLOW_PROBS[idx]*Flow_Mediator.__NUM_OF_STATIC_FLOWS))
+
 
         # the number of the largest flows depends on the previous flows
-        num_flows[-1] = (Flow_Mediator.__FLOW_SIZES - sum(num_flows)) if (Flow_Mediator.__FLOW_SIZES - sum(num_flows) > 0) else 1
+        num_flows[-1] = (Flow_Mediator.__NUM_OF_STATIC_FLOWS -
+                sum(num_flows)) if (Flow_Mediator.__NUM_OF_STATIC_FLOWS -
+                sum(num_flows) > 0) else 1
 
         # all the remote clients (servers that belong to cluster)
         # have the smame numbers of different flows
         host_flows = [None]*num_hosts
+
 
         # compute a vector of flows per remote server
         host_vector = []
@@ -121,6 +138,7 @@ class Flow_Mediator(object):
 
         for idx in xrange(num_hosts-1):
             host_flows[idx] = host_vector
+
 
         # last host gets the remaining flows
         host_flows[-1] = [num_flows[idx] - host_vector[idx]*(num_hosts-1) for idx in xrange(num_of_flow_types)]
@@ -163,7 +181,7 @@ class Flow_Mediator(object):
             send_wait_flows = []             # a list of waiting flows
             for wait_flow in self._m_arr:
                 # append only valid flows (running/waiting flows)
-                if send_wait_flows.is_valid() == WAIT_FLOW_VALID:
+                if wait_flow.is_valid() == WAIT_FLOW_VALID:
                     send_wait_flows.append(wait_flow.get_attributes())
 
             # done copying running/waiting flows
@@ -207,7 +225,7 @@ class Flow_Mediator(object):
             # In addition, terminate the process.
             if self._m_processes:
                 for prc in self._m_processes:
-                    if prc.is_alive():
+                    if prc and prc.is_alive():
                         prc.terminate()
                         prc.join()
 

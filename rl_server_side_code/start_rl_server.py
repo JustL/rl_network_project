@@ -24,8 +24,6 @@ def run_rl_server(queue):
     except:
         pass
 
-    print "Server Thread is terminating"
-
 
 
 # gets called once "SIGTERM" is used
@@ -37,8 +35,8 @@ def signal_term_handler(signal, frame):
 if __name__ == "__main__":
 
     if len(sys.argv) < 2:
-        print "Please enter an ip address for this rl server"
-        print "(e.g., '127.0.0.1')"
+        print "Please enter a public IP address for this rl server"
+        print "(e.g., 175.152.11.174)"
         sys.exit(0)
 
     # create and pass the deep reinforcement

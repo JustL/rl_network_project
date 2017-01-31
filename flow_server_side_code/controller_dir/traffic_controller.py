@@ -3,7 +3,10 @@ from SimpleXMLRPCServer import SimpleXMLRPCServer
 import threading
 import socket
 from pyroute2 import IPRoute
-from pyroute2.netlink.rtnl import RTM_DELQDISC, RTM_NEWQDISC, RTM_NEWTCLASS ,TC_H_ROOT
+from pyroute2.netlink.rtnl import RTM_DELQDISC
+from pyroute2.netlink.rtnl import RTM_NEWQDISC
+from pyroute2.netlink.rtnl import RTM_NEWTCLASS
+from pyroute2.netlink.rtnl import TC_H_ROOT
 from pyroute2.netlink import NetlinkError
 
 
@@ -31,9 +34,16 @@ class Traffic_Controller(Flow_Controller):
     '''
     def _init_object(self, ip_address):
         self._m_server = SimpleXMLRPCServer(ip_address)
-        self._m_infcs = {}           # for keeping track of IPv4 address : interface matching
+        self._m_thread = None       # reference to the thread that
+                                    # runs this controller
+
+        self._m_infcs = {}          # for keeping track of IPv4 address :
+                                    # interface matching
+
         self._m_cntrl = IPRoute()   # an interface to control traffic
-        self._init_default_htb()    # for each interface set 'htb' as the default
+
+        self._init_default_htb()    # for each interface set 'htb'
+                                    # as the default
 
 
     '''
@@ -83,7 +93,8 @@ class Traffic_Controller(Flow_Controller):
     def start(self):
         self._m_server.register_function(self.update_flow_parameters, 'update_flow_parameters')
         # start a new thread for handling the RPC updates
-        threading.Thread(target=self._m_server.serve_forever).start()
+        self._m_thread = threading.Thread(target=self._m_server.serve_forever)
+        self._m_thread.start()
 
     '''
     A way of stopping the RPC server.
@@ -98,6 +109,8 @@ class Traffic_Controller(Flow_Controller):
         try:
             self._m_server.shutdown()      # close the server
             self._m_server.close_server()  # clean up the server
+            self._m_thread.join()          # wait till the thread
+                                           # terminates
         except RuntimeError:
             pass
 

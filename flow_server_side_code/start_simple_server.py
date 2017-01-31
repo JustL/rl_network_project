@@ -14,7 +14,7 @@ import sys
 from flow_dir.simple_flow_server import Simple_Flow_Server
 
 
-# this value is referred to by other scripts 
+# this value is referred to by other scripts
 SERVER_PORT = 30150 # all servers listen on the same port
 
 # global flag for temination
@@ -47,8 +47,8 @@ if __name__ == "__main__":
     # This server is only needed for generating a flow.
 
     if len(sys.argv) < 2:
-        print "Please enter the IP iddress for a flow server",
-        print "(e.g., '127.0.0.1')"
+        print "Please enter a public IP iddress for a flow server",
+        print "(e.g., 175.159.10.14)"
         sys.exit(0)
 
     # register a signal handler
@@ -56,7 +56,7 @@ if __name__ == "__main__":
 
     # create a new thread and a new server
     m_queue = Queue.Queue(1)
-    server = Simple_Flow_Server(ip_address=sys.arg[1],
+    server = Simple_Flow_Server(ip_address=sys.argv[1],
             port_num=SERVER_PORT)
     m_queue.put(server)  # a queue is used for passing the server object
 
