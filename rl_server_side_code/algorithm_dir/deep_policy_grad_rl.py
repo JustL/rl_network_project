@@ -322,11 +322,13 @@ class Deep_Policy_Grad_RL(RL_Flow_Algorithm):
     def pass_data_for_learning(self, updates):
         ip_address, wait_flows, completed_flows = updates
 
+        ip_address = tuple(ip_address) # need to convert into a tuple
+
         if ip_address not in self._m_servers:
             # a new server sends a request, allocate a new
             #flow info struct for it
             self._m_servers[ip_address] = RL_Reward_Struct(numpy.zeros((1,
-                Deep_Policy_Grad_RL.__NUM_OF_ACTIONS),
+                Deep_Policy_Grad_RL.__NO_OF_ACTIONS),
                 dtype=numpy.float32))
 
         # first the received reward has to be computed
@@ -334,7 +336,7 @@ class Deep_Policy_Grad_RL(RL_Flow_Algorithm):
         self._compute_reward(completed_flows)
 
         # since for this case only the number dedined by
-        # __NUM_OF_FEATURES determines how many flows are
+        # __NO_OF_FEATURES determines how many flows are
         # considered per flow, need to pad or cut some flows
         features =  self._preprocess_flows(wait_flows,
                                       completed_flows)
@@ -370,7 +372,7 @@ class Deep_Policy_Grad_RL(RL_Flow_Algorithm):
             for _ in xrange(need_to_add):
                 # add a tuple that represents
                 # a waiting/running flow
-                wait_flows.append((0, 0, 0.0))
+                wait_flows.append([0, 0, 0.0])
 
         # do the same thing with completed flows
         if len(completed_flows) < 10:
@@ -378,12 +380,13 @@ class Deep_Policy_Grad_RL(RL_Flow_Algorithm):
             for x in xrange(need_to_add):
                 # keep adding the tuple that
                 # represemts a completed flow
-                completed_flows.append((0.0, 0, 0, 0.0))
+                completed_flows.append([0.0, 0, 0, 0.0])
 
-        wait = numpy.array(wait_flows[-10::1]).reshape(1, 10*len(wait_flows[-1]))
-        completed = numpy.array(completed_flows[-10::1].reshape(1, 10*len(completed_flows[-1])))
+        wait = numpy.array(wait_flows[-10::1]).reshape((1, 10*len(wait_flows[-1])))
+        completed = numpy.array(completed_flows[-10::1]).reshape((1, 10*len(completed_flows[-1])))
 
-        return numpy.append(wait, completed)
+
+        return numpy.concatenate((wait, completed), axis=1)
 
 
 
@@ -404,14 +407,14 @@ class Deep_Policy_Grad_RL(RL_Flow_Algorithm):
         cur_size =  0
         cur_time =  0.0
 
+        # a list of list-flows
         for item in flows:
-            attr = item.get_attributes()
-            cur_size += attr[1]
-            cur_time += attr[0]
+            cur_size += item[1]
+            cur_time += item[0]
 
         # compute a new reward
         rate = (cur_size/cur_time)
-        self._m_reward = SYSTEM_POSITIVE_REWARD if (rate/self.m_struct.get_prev_rate()) >= 1.0 else SYSTEM_NEGATIVE_REWARD
+        self._m_reward = SYSTEM_POSITIVE_REWARD if (rate/self._m_struct.get_prev_rate()) >= 1.0 else SYSTEM_NEGATIVE_REWARD
         self._m_struct.update_reward(self._m_reward, rate)
 
 
@@ -466,7 +469,7 @@ class Deep_Policy_Grad_RL(RL_Flow_Algorithm):
        # update prev predictions
 
        prob = predictions[0][act_index]
-       predictions = numpy.zeros((1, Deep_Policy_Grad_RL.__NUM_OF_ACTIONS),
+       predictions = numpy.zeros((1, Deep_Policy_Grad_RL.__NO_OF_ACTIONS),
                dtype=numpy.float32)
        predictions[0][act_index] = prob
        self._m_struct.set_prev_pred(predictions)
@@ -490,8 +493,12 @@ class Deep_Policy_Grad_RL(RL_Flow_Algorithm):
         returns the state of a successful deletion
     '''
     def unregister_from_learning(self, ip_address):
-        if ip_address in self._m_servers:
+
+        address = tuple(ip_address) # need to convert into a tuple
+                                    # since RPC converts into a list
+
+        if address in self._m_servers:
             # if the passed ip has been registered within
             # this model, delete it -- unregister it.
-            del self._m_servers[ip_address]
+            del self._m_servers[address]
 
