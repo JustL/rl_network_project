@@ -42,7 +42,7 @@ class Wait_Flow(Structure):
 
     parameters : flow attribute(s)
     '''
-    def _set_attributes(self, attr):
+    def set_attributes(self, attr):
         pass
 
 
@@ -59,7 +59,7 @@ class Wait_Flow(Structure):
     setting a flow to be a valid waiting
     flow.
     '''
-    def _set_valid(self, val):
+    def set_valid(self, val):
         pass
 
 
@@ -90,6 +90,6 @@ class Compl_Flow(object):
 
      paramters : flow attribute(s)
     '''
-    def _set_attributes(self, attr):
+    def set_attributes(self, attr):
         pass
 

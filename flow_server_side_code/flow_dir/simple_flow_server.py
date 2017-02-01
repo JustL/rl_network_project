@@ -43,60 +43,73 @@ def sock_proc(client):
     # run a connection
     # since this is a server process, it always waits for a client's
     # request before it takes any actions
-    REPLY_LEN       = len(PROTOCOL_SIGNAL[1])  # terminal signal length
-    REPLY_MSG       = (ctypes.c_char*(REPLY_LEN + 1))()
-    REPLY_MSG.value = PROTOCOL_SIGNAL[1]       # a terminal sequence
+    REPLY_LEN         = len(PROTOCOL_SIGNAL[1])     # terminal signal
+                                                    # length
+    REPLY_MSG         = (ctypes.c_char*REPLY_LEN)()
+    REPLY_MSG[0::1]   = PROTOCOL_SIGNAL[1]          # terminal sequence
 
-    RECV_LEN        = len(PROTOCOL_SIGNAL[0])  # length of client's term signal
-    RECV_MSG        = PROTOCOL_SIGNAL[0]       # terminal message
-    MAX_READ        = 2048                     # at most that many bytes to read
-                                               # in one socket call
+    RECV_LEN          = len(PROTOCOL_SIGNAL[0])     # length of
+                                                    # client's term
+                                                    # signal
 
-    try:
-        while 1: # run forever
-            recv_data = [] # where data is stored
-            chunk = (ctypes.c_char*MAX_READ)()
-
-            while 1:
-                # since the teminal sequence must be at the end of the flow
-                # check only the last items of the received data
-                read_bytes = libc.recv(client, chunk, MAX_READ-1, 0)
-
-                if read_bytes < 0:
-                    raise RuntimeError("socket connection broken")
-
-                # check last bytes for the terminal msg
-                if len(chunk.value) >= RECV_LEN:
-                    if chunk.value[(-RECV_LEN): :1] == RECV_MSG:
-                        # means the client has finished its flow -- send reply
-                        break
-                    # don't need to store all data -- just last few bytes
-                    recv_data = chunk.value[(-RECV_LEN): :1]
-
-                else: # check the previous data combined with the new data
-                    recv_data.append(chunk)
-                    if len("".join(recv_data)) >= RECV_LEN: # check for terminal sequence
-                        if recv_data[(-RECV_LEN): : 1] == RECV_MSG:
-                            break
-                        recv_data = recv_data[(-RECV_LEN): :1] # store some va
+    RECV_MSG          = PROTOCOL_SIGNAL[0]          # terminal message
+    MAX_READ          = 2048                        # at most that many
+                                                    # bytes to read
+                                                    # in one socket call
 
 
-            # the below code just sends a reply to the client and
-            # waits for a new message
-            total_sent = 0
-            while total_sent < REPLY_LEN:
-                sent_bytes = libc.send(client, REPLY_MSG[total_sent : ], REPLY_LEN, 0) #send reply
-                if sent_bytes < 0:
-                    raise RuntimeError("socket connection broken")
-                # update the number of sent bytes
-                total_sent += sent_bytes
 
-            # done handling the flow.
-            # waiting for another one.
+    while 1: # run forever
+        recv_data = "0"*RECV_LEN # where received data is stored
+        chunk = (ctypes.c_char*MAX_READ)()
+
+        print "Simple_Flow_Server: About to call receive..."
+        while recv_data != RECV_MSG:
+            # since the teminal sequence must be at the end of the flow
+            # check only the last items of the received data
+            read_bytes = libc.recv(client, chunk, MAX_READ, 0)
+
+            if read_bytes < 0:
+                print "socket connection broken"
+                libc.close(client) # close socket and terminate
+                return
+
+            # check update received data
+            if read_bytes >= RECV_LEN:
+                # read last bytes for checking
+                recv_data = chunk[read_bytes-RECV_LEN:read_bytes:1]
+
+            else: # check the previous data combined with the new data
+                start_idx = RECV_LEN - read_bytes
+                recv_data = chunk[0:read_bytes:1] + recv_data[start_idx::1]
 
 
-    finally:
-        pass
+        # the below code just sends a reply to the client and
+        # waits for a new message
+        print "Simple_Flow_Server: Received a message.",
+        print "Sending a response..."
+
+        total_sent = 0
+        while total_sent < REPLY_LEN:
+            sent_bytes = libc.send(client,
+                    REPLY_MSG[total_sent:REPLY_LEN:1],
+                    REPLY_LEN, 0) #send reply
+
+            if sent_bytes < 0:
+                print "socket connection broken"
+                libc.close(client) # close socket and terminate
+                return
+
+            # update the number of sent bytes
+            total_sent += sent_bytes
+
+
+        print "Simple_Flow_Server: Done with a flow.",
+        print "Waiting for a new one..."
+
+    # done handling the flow.
+    # waiting for another one.
+
 
 
 

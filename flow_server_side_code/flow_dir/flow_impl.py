@@ -18,7 +18,7 @@ class RL_Wait_Flow(Wait_Flow):
     are used since it is assumed that the RL deep
     neural net should not use them as features.
     '''
-    _fields_ = [('_size', c_int), ('_priotiy', c_int), ('_rate_limit', c_double), ('_valid_field', c_short)]
+    _fields_ = [('_size', c_int), ('_priority', c_int), ('_rate_limit', c_double), ('_valid_field', c_short)]
 
     '''
     Method returns a tuple of the waiting flow
@@ -35,7 +35,7 @@ class RL_Wait_Flow(Wait_Flow):
 
     parameter : must be a Python tuple
     '''
-    def _set_attributes(self, attr):
+    def set_attributes(self, attr):
         self._size, self._priority, self._rate_limit = attr
 
 
@@ -55,7 +55,7 @@ class RL_Wait_Flow(Wait_Flow):
     parameter : val : 0 for invalid, any other val for
     valid
     '''
-    def _set_valid(self, val):
+    def set_valid(self, val):
         self._valid_field = val
 
 
@@ -86,7 +86,7 @@ class RL_Compl_Flow(Compl_Flow):
 
     paramters : attr : must be a Python tuple
     '''
-    def _set_attributes(self, attr):
+    def set_attributes(self, attr):
         self._fct, self._size, self._priority. self._rate_limit = attr
 
 

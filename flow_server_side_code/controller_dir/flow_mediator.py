@@ -13,16 +13,16 @@ to th 'rl_server_side_code' directory.
 
 # below imports are defined in this project
 from flow_dir.flow_handler import Flow_Handler
-from interface_dir.flow_interfaces import WAIT_FLOW_VALID
+#from interface_dir.flow_interfaces import WAIT_FLOW_VALID
 
 
 # standard library imputs
 from multiprocessing import Array, Queue, Lock
-from Queue import Empty
+#from Queue import Empty
 import xmlrpclib
 import sys
 import math
-import time
+#import time
 
 
 class Flow_Mediator(object):
@@ -93,6 +93,16 @@ class Flow_Mediator(object):
         # priority generator
         pr_generator = self._get_flow_priority()
 
+        # for testing just make one flow
+        self._m_processes[0] = Flow_Handler(ip_address=ip_addresses[0],
+                cmp_queue=self._m_cm_flows, inc_arr=self._m_arr,
+                flow_size = 1500,
+                flow_pref_rate=Flow_Mediator.__FLOW_RATES[0],
+                flow_index=0, flow_priority=4)
+
+        self._m_processes[0].start()
+
+        return
 
         # loop through each of the flows and create a new Flow_Handler
         for host in xrange(0, num_of_hosts, 1):
@@ -173,6 +183,10 @@ class Flow_Mediator(object):
     '''
     def start_updating(self):
         while self._m_looping:
+            pass
+
+        '''
+        while self._m_looping:
             time.sleep(Flow_Mediator.__SLEEP_TIME) # sleep for a while
             if not self._m_looping: # means another thread has closed
                 break;
@@ -212,6 +226,7 @@ class Flow_Mediator(object):
             except:
                 # means the proxy has been closed
                 self.kill_processes()
+            '''
 
         '''
         Public method that closes sockets and kills all the processes.
