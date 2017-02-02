@@ -322,6 +322,8 @@ class Deep_Policy_Grad_RL(RL_Flow_Algorithm):
     def pass_data_for_learning(self, updates):
         ip_address, wait_flows, completed_flows = updates
 
+        print "RL_SERVER_SIDE_CODE: pass_data_for_learning gets called"
+
         ip_address = tuple(ip_address) # need to convert into a tuple
 
         if ip_address not in self._m_servers:
@@ -407,6 +409,10 @@ class Deep_Policy_Grad_RL(RL_Flow_Algorithm):
         cur_size =  0
         cur_time =  0.0
 
+        print "Deep_RL_Learning: completed flows",
+        print flows
+
+        return
         # a list of list-flows
         for item in flows:
             cur_size += item[1]
@@ -455,7 +461,11 @@ class Deep_Policy_Grad_RL(RL_Flow_Algorithm):
        # send the received value to the remote server
        client = None
        try:
-           client = xmlrpclib.ServerProxy("http://" + server_address[0] + ":" + str(server_address[1]))
+           print "Making a decision and sending the new params",
+           print "to a remote controller"
+           client = xmlrpclib.ServerProxy(
+                   "http://" + server_address[0] + ":"
+                   + str(server_address[1]))
            # send an update
            client.update_flow_parameters(Deep_Policy_Grad_RL.__ACTION_SPACE[act_index])
        except RuntimeError:

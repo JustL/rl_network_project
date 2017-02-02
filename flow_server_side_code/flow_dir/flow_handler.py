@@ -15,6 +15,7 @@ from flow_impl import RL_Compl_Flow
 from interface_dir.flow_interfaces import WAIT_FLOW_VALID, WAIT_FLOW_INVALID
 
 from multiprocessing import Process
+import Queue
 from socket import AF_INET, SOCK_STREAM, IPPROTO_TCP, SOL_SOCKET
 import time
 import sys
@@ -40,7 +41,7 @@ SO_PRIORITY = 12                  # a Linux flag that enables setting a
 
 class Flow_Handler(Process):
     __release_version = 1
-    __CONST_TIME_VAL = 3 # 3 s of sleeping
+    __CONST_TIME_VAL = 15 # 3 s of sleeping
 
 
     def __init__(self, ip_address,  cmp_queue, inc_arr, flow_size, flow_pref_rate, flow_index, flow_priority=0):
@@ -129,8 +130,16 @@ class Flow_Handler(Process):
     Method notifies the Flow_Medaitor that the flow has completed
     '''
     def _unregister_for_flow(self, flow_cmpl_time):
-        self._m_arr[self._m_index].set_valid(WAIT_FLOW_INVALID) # unvalid field
-        self._m_queue.put(RL_Compl_Flow(flow_cmpl_time, self._m_size, self._m_priority, self._m_rate))# flow has been completed
+        # mark this flow as completed, not running one
+        self._m_arr[self._m_index].set_valid(WAIT_FLOW_INVALID)
+
+        try:
+            self._m_queue.put(RL_Compl_Flow(flow_cmpl_time,
+                self._m_size, self._m_priority,
+                self._m_rate), block=False)  # flow has been completed
+        except Queue.Full:
+            # ignore if the queue is full
+            pass
 
 
 
@@ -143,95 +152,99 @@ class Flow_Handler(Process):
     '''
     def _flow_data(self, sockfd, libc):
 
-      data = (ctypes.c_char*self._m_size)()     # a flow-size string
-      data[0::1] = "0"*self._m_size
-      CHUNK_SIZE = 2048
-      chunk = (ctypes.c_char*CHUNK_SIZE)()      # a buffer to store
+        data = (ctypes.c_char*self._m_size)()     # a flow-size string
+        data[0::1] = "0"*self._m_size
+        CHUNK_SIZE = 2048
+        chunk = (ctypes.c_char*CHUNK_SIZE)()      # a buffer to store
                                                 # received data
 
-      # initialize some message constants
-      MSG_LEN = len(PROTOCOL_SIGNAL[0])
-      TERM_MSG = (ctypes.c_char*MSG_LEN)()
-      TERM_MSG[0::1] = PROTOCOL_SIGNAL[0]
+        # initialize some message constants
+        MSG_LEN = len(PROTOCOL_SIGNAL[0])
+        TERM_MSG = (ctypes.c_char*MSG_LEN)()
+        TERM_MSG[0::1] = PROTOCOL_SIGNAL[0]
 
-      # initialize some variables for receiving a flow
-      RECV_SIGN = PROTOCOL_SIGNAL[1]
-      RECV_LEN  = len(PROTOCOL_SIGNAL[1]) # for initializing arrays
-
-
-      '''
-      The while loop acts as if it was a server loop -- runs forever.
-      This approach used for using the same socket for sending a flow in order
-      to reduce overhead for creating a new socket and a new process.
-      Once the flow has completed, for some fixed time the process sleeps.
-      '''
-      while 1:
-          self._register_for_flow() # starting a new flow
-
-          # initialize some variables for sending a flow
-          total_sent = 0
-          recv_data = "0"*RECV_LEN
+        # initialize some variables for receiving a flow
+        RECV_SIGN = PROTOCOL_SIGNAL[1]
+        RECV_LEN  = len(PROTOCOL_SIGNAL[1]) # for initializing arrays
 
 
-          flow_start = micros() # get the current time for timestamping
+        '''
+        The while loop acts as if it was a server loop -- runs forever.
+        This approach used for using the same socket for sending a flow
+        in order to reduce overhead for creating a new socket and a new
+        process. Once the flow has completed, for some fixed time the
+        process sleeps.
+        '''
+        while 1:
+            self._register_for_flow() # starting a new flow
 
-          while total_sent < self._m_size: # send the entire flow
-              sent_bytes = libc.send(sockfd, data[total_sent::1],
-                      self._m_size, 0)
-              if sent_bytes  < 0:
-                  print "socket connection broken"
-                  libc.close(sockfd) # close socket
-                  return
-
-              total_sent += sent_bytes # update sent bytes by the
-                                       # number of sent bytes
-
-
-          # the flow data has been sent
-          # add the terminal sequence
-          total_sent = 0
-
-          while total_sent < MSG_LEN:
-              sent_bytes = libc.send(sockfd, TERM_MSG[total_sent::1],
-                      MSG_LEN, 0)
-
-              if sent_bytes < 0:
-                  print "socket connection broken"
-                  libc.close(sockfd) # close socket
-                  return
-
-              total_sent += sent_bytes   # update counter
+            # initialize some variables for sending a flow
+            total_sent = 0
+            recv_data = "0"*RECV_LEN
 
 
-          print "Flow_Handler: Sent message. Waiting for response..."
+            flow_start = micros() # get the current time for timestamping
 
-          # wait for response from the remote server
-          while recv_data != RECV_SIGN:   # loop until the terminal
+            while total_sent < self._m_size: # send the entire flow
+                sent_bytes = libc.send(sockfd, data[total_sent::1],
+                        self._m_size, 0)
+                if sent_bytes  < 0:
+                    print "socket connection broken"
+                    libc.close(sockfd) # close socket
+                    return
+
+
+                total_sent += sent_bytes # update sent bytes by the
+                                         # number of sent bytes
+
+
+
+            # the flow data has been sent
+            # add the terminal sequence
+            total_sent = 0
+
+            while total_sent < MSG_LEN:
+                sent_bytes = libc.send(sockfd, TERM_MSG[total_sent::1],
+                        MSG_LEN, 0)
+
+                if sent_bytes < 0:
+                    print "socket connection broken"
+                    libc.close(sockfd) # close socket
+                    return
+
+                total_sent += sent_bytes   # update counter
+
+
+            # wait for response from the remote server
+            while recv_data != RECV_SIGN:   # loop until the terminal
                                           # message has been received
-              read_bytes = libc.recv(sockfd, chunk, CHUNK_SIZE, 0)
+                read_bytes = libc.recv(sockfd, chunk, CHUNK_SIZE, 0)
 
-              if read_bytes < 0:
-                  print "socket connection broken"
-                  libc.close(sockfd) # close socket
-                  return
+                if read_bytes < 0:
+                    print "socket connection broken"
+                    libc.close(sockfd) # close socket
+                    return
 
-              # update the received data
-              if read_bytes >= RECV_LEN:
-                  recv_data = chunk[read_bytes-RECV_LEN:read_bytes:1]
+                # update the received data
+                if read_bytes >= RECV_LEN:
+                    recv_data = chunk[read_bytes-RECV_LEN:read_bytes:1]
 
-              else:
-                  start_idx = RECV_LEN - read_bytes
-                  recv_data = chunk[0:read_bytes:1] + recv_data[start_idx::1]
+                else:
+                    start_idx = RECV_LEN - read_bytes
+                    recv_data = chunk[0:read_bytes:1] + recv_data[start_idx::1]
 
 
+            flow_end = micros() # end of the flow
 
-          flow_end = micros() # end of the flow
+            print "Flow_Handler: A flow completed"
+            # notify the flow mediator that this flow has finished
+            self._unregister_for_flow((flow_end - flow_start))
 
-          print "Flow_Handler: Received a reponse. A flow finished!!!"
+            print "Flow_Handler: A flow has been registered"
+            # sleep for a const number of seconds
+            time.sleep(Flow_Handler.__CONST_TIME_VAL)
 
-          self._unregister_for_flow((flow_end - flow_start)) # notify the flow mediator that this flow has finished
 
-          time.sleep(Flow_Handler.__CONST_TIME_VAL)  # sleep for const time seconds
 
 
     '''

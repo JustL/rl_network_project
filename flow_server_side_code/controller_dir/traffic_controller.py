@@ -68,7 +68,8 @@ class Traffic_Controller(Flow_Controller):
 
             try:
                 # delete the current discipline
-                self._m_cntrl.tc(RTM_DELQDISC, None, if_index, 0, parent=TC_H_ROOT)
+                self._m_cntrl.tc(RTM_DELQDISC, None, if_index, 0,
+                        parent=TC_H_ROOT)
             except Exception as exp:
                 if isinstance(exp, NetlinkError) and exp.code == 2:
                     # nothing to delete
@@ -80,7 +81,8 @@ class Traffic_Controller(Flow_Controller):
 
             # scheduling has been deleted, add htb
             try:
-                self._m_cntrl.tc(RTM_NEWQDISC, "htb", if_index, idx, default=0)
+                self._m_cntrl.tc(RTM_NEWQDISC, "htb", if_index,
+                        idx, default=0)
             except:
                 raise
 
@@ -91,7 +93,8 @@ class Traffic_Controller(Flow_Controller):
     SimpleXMLRPC server.
     '''
     def start(self):
-        self._m_server.register_function(self.update_flow_parameters, 'update_flow_parameters')
+        self._m_server.register_function(self.update_flow_parameters,
+                'update_flow_parameters')
         # start a new thread for handling the RPC updates
         self._m_thread = threading.Thread(target=self._m_server.serve_forever)
         self._m_thread.start()
@@ -145,6 +148,8 @@ class Traffic_Controller(Flow_Controller):
             # invalid update
             raise RuntimeError("Invalid update tuple")
 
+        print "--- Traffic_Controller: update_flow_parameters",
+        print "got called ---"
         # check whether it is needed to retrieve the interface index
         # TO DO: now only one interface is supoorted. Improve in the
         # future

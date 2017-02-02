@@ -63,7 +63,7 @@ def sock_proc(client):
         recv_data = "0"*RECV_LEN # where received data is stored
         chunk = (ctypes.c_char*MAX_READ)()
 
-        print "Simple_Flow_Server: About to call receive..."
+
         while recv_data != RECV_MSG:
             # since the teminal sequence must be at the end of the flow
             # check only the last items of the received data
@@ -86,8 +86,6 @@ def sock_proc(client):
 
         # the below code just sends a reply to the client and
         # waits for a new message
-        print "Simple_Flow_Server: Received a message.",
-        print "Sending a response..."
 
         total_sent = 0
         while total_sent < REPLY_LEN:
@@ -103,9 +101,6 @@ def sock_proc(client):
             # update the number of sent bytes
             total_sent += sent_bytes
 
-
-        print "Simple_Flow_Server: Done with a flow.",
-        print "Waiting for a new one..."
 
     # done handling the flow.
     # waiting for another one.
@@ -131,7 +126,7 @@ class Simple_Flow_Server(object):
                                          # connections
         self._m_procs = []               # an empty list of processes
         self._m_ip    = (ip_address, port_num)
-        self._m_looping  = True          # a flag that tells the server to
+        self._m_exit  = threading.Event() # a flag that tells the server to
                                          # keep looping
         self._m_lock = threading.Lock()  # a lock that protects data
                                          # consistency withing this program
@@ -157,7 +152,7 @@ class Simple_Flow_Server(object):
 
         # run forever
         try:
-            while self._m_looping:
+            while not self._m_exit.is_set():
                 # accept connections from other servers
                 client_sock = libc.accept(sockfd, 0, 0)
 
@@ -169,7 +164,7 @@ class Simple_Flow_Server(object):
                 # append the socket to the connection list
                 # get a lock to modify the resources
                 with self._m_lock:
-                    if not self._m_looping: # check for the flag first
+                    if self._m_exit.is_set(): # check for the flag first
                         break
 
                     self._m_conns.append(client_sock)
@@ -201,7 +196,7 @@ class Simple_Flow_Server(object):
             except:
                 raise RuntimeError("'libc.so.6' could not be loaded")
 
-            self._m_looping = False # stop looping
+            self._m_exit.set()  # stop looping
             # close all connections first
             if self._m_conns:
                 for conn in self._m_conns:

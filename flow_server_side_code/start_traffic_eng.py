@@ -37,7 +37,7 @@ def run_flow_mediator(mediator_queue):
 
 
 def signal_term_handler(signal, frame):
-    # notify all processes and terminate them
+    # notify all processes and terminate them"
     global term_event
     term_event = 0
 
@@ -102,6 +102,7 @@ if __name__ == "__main__":
     # run until this proces has to be terminated
     while term_event:
         pass
+
 
     # stop the mediator
     try:

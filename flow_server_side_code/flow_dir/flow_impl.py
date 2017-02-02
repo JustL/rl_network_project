@@ -9,6 +9,9 @@ classes.
 
 
 from  interface_dir.flow_interfaces import Wait_Flow, Compl_Flow
+from  interface_dir.flow_interfaces import WAIT_FLOW_VALID
+
+
 from ctypes import c_int, c_double, c_short
 
 class RL_Wait_Flow(Wait_Flow):
@@ -46,7 +49,7 @@ class RL_Wait_Flow(Wait_Flow):
     returns : 1 for valid, 0 for invalid
     '''
     def is_valid(self):
-        return self._valid_field
+        return (self._valid_field == WAIT_FLOW_VALID)
 
 
     '''

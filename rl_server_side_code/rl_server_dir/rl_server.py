@@ -26,15 +26,16 @@ def model_run_function(model, task_queue, term_event, clean_ip_queue):
     while not term_event.is_set():   # process computations until
                                      # the parent process dies
 
+
         # copy all waiting batches to the local list
         try:
             while 1:
                 # dequeue as many batches as possible
-                local_copy.append(task_queue.get(False))
+                local_copy.append(task_queue.get(block=False))
 
         except Empty:
-            pass
-            # means the task_queue has no more tasks
+            pass   # means the task_queue has no more tasks
+
 
         # process the tasks that have been added to the local list
         while local_copy:
@@ -49,7 +50,7 @@ def model_run_function(model, task_queue, term_event, clean_ip_queue):
 
             try:
                 while 1:
-                   ips_to_remove.append(clean_ip_queue.get(False))
+                   ips_to_remove.append(clean_ip_queue.get(block=False))
 
             except Empty:
                 pass
@@ -99,8 +100,9 @@ class RL_Server(object):
         self._m_clean_ips = Queue(RL_Server.__MAX_WAIT_TASKS) # a queue of ip addresses that have to be removed from the model's algorithm
         # computation is run on a separate thread
         self._m_comp_thread = threading.Thread(target=model_run_function,
-              args=(model, self._m_batch_queue, self._m_event, self._m_clean_ips))
-        # self._m_comp_thread.start() # start running the thread
+              args=(model, self._m_batch_queue, self._m_event,
+                  self._m_clean_ips))
+
 
     '''
     An interface that the RPC server owned by this class
@@ -116,7 +118,7 @@ class RL_Server(object):
     def pass_flow_info(self, train_batch):
 
         # enqueue the new batch on the processor queue
-        self._m_batch_queue.put(train_batch, True) # use blocking call
+        self._m_batch_queue.put(train_batch, block=True) # use blocking call
 
         return 'a'
 
