@@ -70,6 +70,7 @@ class RL_Compl_Flow(Compl_Flow):
     '''
 
     def __init__(self, fct=0, size=0, priority=1, rate_limit=0):
+        super(RL_Compl_Flow, self).__init__()
         self._fct = fct                # flow completion time
         self._size = size              # flow size (bytes)
         self._priority = priority      # flow priority

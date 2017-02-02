@@ -100,19 +100,19 @@ class RL_Reward_Struct(object):
 
 class Deep_Policy_Grad_RL(RL_Flow_Algorithm):
 
-    # Actions {priority (int), rate (bits per second)}:
-    __ACTION_SPACE = [{"priority" : 1, "rate" : 100000},
-                 {"priority" : 1, "rate" : 200000},
-                 {"priority" : 2, "rate" : 100000},
-                 {"priority" : 2, "rate" : 200000},
-                 {"priority" : 3, "rate" : 100000},
-                 {"priority" : 3, "rate" : 200000},
-                 {"priority" : 4, "rate" : 100000},
-                 {"priority" : 4, "rate" : 200000},
-                 {"priority" : 5, "rate" : 100000},
-                 {"priority" : 5, "rate" : 200000},
-                 {"priority" : 6, "rate" : 100000},
-                 {"priority" : 6, "rate" : 200000}]
+    # Actions {priority (int), rate (kbits per second)}:
+    __ACTION_SPACE = [{"priority" : 1, "rate" : 100},
+                 {"priority" : 1, "rate" : 200},
+                 {"priority" : 2, "rate" : 100},
+                 {"priority" : 2, "rate" : 200},
+                 {"priority" : 3, "rate" : 100},
+                 {"priority" : 3, "rate" : 200},
+                 {"priority" : 4, "rate" : 100},
+                 {"priority" : 4, "rate" : 200},
+                 {"priority" : 5, "rate" : 100},
+                 {"priority" : 5, "rate" : 200},
+                 {"priority" : 6, "rate" : 100},
+                 {"priority" : 6, "rate" : 200}]
 
 
     # Hyperparameters
@@ -322,7 +322,6 @@ class Deep_Policy_Grad_RL(RL_Flow_Algorithm):
     def pass_data_for_learning(self, updates):
         ip_address, wait_flows, completed_flows = updates
 
-        print "RL_SERVER_SIDE_CODE: pass_data_for_learning gets called"
 
         ip_address = tuple(ip_address) # need to convert into a tuple
 
@@ -379,12 +378,13 @@ class Deep_Policy_Grad_RL(RL_Flow_Algorithm):
         # do the same thing with completed flows
         if len(completed_flows) < 10:
             need_to_add = 10 - len(completed_flows)
-            for x in xrange(need_to_add):
+            for _ in xrange(need_to_add):
                 # keep adding the tuple that
                 # represemts a completed flow
                 completed_flows.append([0.0, 0, 0, 0.0])
 
         wait = numpy.array(wait_flows[-10::1]).reshape((1, 10*len(wait_flows[-1])))
+
         completed = numpy.array(completed_flows[-10::1]).reshape((1, 10*len(completed_flows[-1])))
 
 
@@ -409,10 +409,7 @@ class Deep_Policy_Grad_RL(RL_Flow_Algorithm):
         cur_size =  0
         cur_time =  0.0
 
-        print "Deep_RL_Learning: completed flows",
-        print flows
 
-        return
         # a list of list-flows
         for item in flows:
             cur_size += item[1]
@@ -459,16 +456,19 @@ class Deep_Policy_Grad_RL(RL_Flow_Algorithm):
 
 
        # send the received value to the remote server
+
+       # the below should never happen, but safety
+       act_index = act_index % Deep_Policy_Grad_RL.__NO_OF_ACTIONS
        client = None
        try:
-           print "Making a decision and sending the new params",
-           print "to a remote controller"
            client = xmlrpclib.ServerProxy(
                    "http://" + server_address[0] + ":"
                    + str(server_address[1]))
            # send an update
            client.update_flow_parameters(Deep_Policy_Grad_RL.__ACTION_SPACE[act_index])
-       except RuntimeError:
+       except:
+           # an exception might be thrown if the remote client
+           # has closed its listening process
            pass
 
        # train on the same data too and use previous

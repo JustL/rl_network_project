@@ -29,7 +29,7 @@ class Flow_Mediator(object):
     __SLEEP_TIME = 10          # default value 10 seconds
     __NUM_OF_STATIC_FLOWS = 75 # number of flows on this server
     __FLOW_SIZES =      [100000, 250000, 1000000, 500000000] # flow sizes (bytes)
-    __FLOW_RATES =      [100, 200] # flow rate Kbit/s
+    __FLOW_RATES =      [100000, 200000] # flow rate Kbit/s
     __FLOW_PRIORITIES = [0, 1, 2, 3, 4, 5, 6]   # 7 requires admin
     __FLOW_PRIORITY_PROB = [0.5, 0.2, 0.15, 0.05, 0.05, 0.03, 0.02] # priority porb
     __FLOW_PROBS =      [0.5, 0.35, 0.23, 0.02]   # flow probabilities
@@ -65,7 +65,8 @@ class Flow_Mediator(object):
     '''
     def _init_flows(self, rl_server, ip_addresses):
 
-        self._m_controller.start()         # start the traffic controller
+        self._m_controller.start_controller() # start the traffic
+                                              # controller
 
 
         # try to connect to the remote rl server
@@ -77,13 +78,13 @@ class Flow_Mediator(object):
             print "Fault code: %d" % err.faultCode
             print "Fault string: %s" % err.faultString
 
-            self._m_controller.stop()       # stop the controller
+            self._m_controller.stop_controller() # stop the controller
 
             sys.exit(-1)                    # error occurred
 
         except:
             print "Some other exception related to RPC server"
-            self._m_controller.stop()
+            self._m_controller.stop_controller()
             sys.exit(-1)
 
         # run a loop and create flows
@@ -205,17 +206,16 @@ class Flow_Mediator(object):
             # copy finihsed flows
             send_done_flows = []
 
-            print "Flow_Mediator: Getting completed flows"
 
             #keep reading until an exception occurs
             try:
                 while 1:
                     send_done_flows.append(self._m_cm_flows.
-                            get(block=False))
+                            get(block=False).get_attributes())
 
             except Queue.Empty:
                 # done dequeueing the queue
-                print "Flow_Mediator: Empty Exception was thrown"
+                pass
             except:
                 # some other exception occured
                 self.kill_processes()
@@ -225,16 +225,14 @@ class Flow_Mediator(object):
             # this cannot happen in the first prototype, but it
             # might happen later
             if not send_wait_flows and not send_done_flows:
-                print "Flow_Mediator: "
-                print "Means there are no flows to send to",
-                print "the remote reinforcemt learning server"
                 continue
 
             param_list = (self._m_controller.get_controller_address(),
                     send_wait_flows, send_done_flows)
             try:
+                # an exception might be thrown if the rl server
+                # has been closed
                 self._m_proxy.pass_flow_info(param_list)
-                print "Flow_Mediator: Successfully called pass_flow"
             except:
                 # means the proxy has been closed
                 self.kill_processes()
@@ -261,7 +259,7 @@ class Flow_Mediator(object):
 
         # In addition to killing the started flow processes,
         # stop running the traffic controller.
-        self._m_controller.stop()
+        self._m_controller.stop_controller()
 
         # Before stopping the Flow_Mediator,
         # notify the remote rl server about it.

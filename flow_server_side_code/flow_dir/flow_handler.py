@@ -122,7 +122,7 @@ class Flow_Handler(Process):
     A helper method that registers a starting/flwoing flow.
     '''
     def _register_for_flow(self):
-        attr = (self._m_size, self._m_priority, self._m_rate)  # create a tuple and pass it to the shared waiting flow array
+        attr = (self._m_size, self._m_priority.value, self._m_rate)  # create a tuple and pass it to the shared waiting flow array
         self._m_arr[self._m_index].set_attributes(attr)
         self._m_arr[self._m_index].set_valid(WAIT_FLOW_VALID)   # waiting flow
 
@@ -134,9 +134,10 @@ class Flow_Handler(Process):
         self._m_arr[self._m_index].set_valid(WAIT_FLOW_INVALID)
 
         try:
-            self._m_queue.put(RL_Compl_Flow(flow_cmpl_time,
-                self._m_size, self._m_priority,
-                self._m_rate), block=False)  # flow has been completed
+            self._m_queue.put(RL_Compl_Flow(fct=flow_cmpl_time,
+                size=self._m_size, priority=self._m_priority.value,
+                rate_limit=self._m_rate), block=False)  # flow has
+                                                        # been completed
         except Queue.Full:
             # ignore if the queue is full
             pass
@@ -236,11 +237,10 @@ class Flow_Handler(Process):
 
             flow_end = micros() # end of the flow
 
-            print "Flow_Handler: A flow completed"
             # notify the flow mediator that this flow has finished
             self._unregister_for_flow((flow_end - flow_start))
 
-            print "Flow_Handler: A flow has been registered"
+
             # sleep for a const number of seconds
             time.sleep(Flow_Handler.__CONST_TIME_VAL)
 
@@ -274,7 +274,7 @@ class Flow_Handler(Process):
     def terminate(self):
         # close the socket first
         self._close_socket()
-        super(self).terminate()
+        super(Flow_Handler, self).terminate()
 
 
 

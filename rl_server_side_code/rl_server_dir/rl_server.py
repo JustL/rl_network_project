@@ -1,7 +1,7 @@
 # std library
 import SimpleXMLRPCServer
 import threading
-from Queue import Queue, Empty
+import Queue
 
 
 '''
@@ -33,7 +33,7 @@ def model_run_function(model, task_queue, term_event, clean_ip_queue):
                 # dequeue as many batches as possible
                 local_copy.append(task_queue.get(block=False))
 
-        except Empty:
+        except Queue.Empty:
             pass   # means the task_queue has no more tasks
 
 
@@ -52,7 +52,7 @@ def model_run_function(model, task_queue, term_event, clean_ip_queue):
                 while 1:
                    ips_to_remove.append(clean_ip_queue.get(block=False))
 
-            except Empty:
+            except Queue.Empty:
                 pass
 
             # unregister some remote servers
@@ -96,8 +96,12 @@ class RL_Server(object):
         # this server executes updates
 
         self._m_event = threading.Event() # for notifying the other thread
-        self._m_batch_queue = Queue(RL_Server.__MAX_WAIT_TASKS) # model data
-        self._m_clean_ips = Queue(RL_Server.__MAX_WAIT_TASKS) # a queue of ip addresses that have to be removed from the model's algorithm
+        self._m_batch_queue = Queue.Queue(RL_Server.__MAX_WAIT_TASKS)
+        # data to perate on
+
+        self._m_clean_ips = Queue.Queue(RL_Server.__MAX_WAIT_TASKS)
+        # a queue of ip addresses that have to be removed from the model's
+        # algorithm
         # computation is run on a separate thread
         self._m_comp_thread = threading.Thread(target=model_run_function,
               args=(model, self._m_batch_queue, self._m_event,
@@ -118,7 +122,12 @@ class RL_Server(object):
     def pass_flow_info(self, train_batch):
 
         # enqueue the new batch on the processor queue
-        self._m_batch_queue.put(train_batch, block=True) # use blocking call
+        try:
+            # non-blocking call is used to speed up a reply
+            # to the sender
+            self._m_batch_queue.put(train_batch, block=False)
+        except Queue.Full:
+            pass
 
         return 'a'
 

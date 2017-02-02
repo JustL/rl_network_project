@@ -16,7 +16,7 @@ class Flow_Controller(object):
     An interface to start the concrete class
     running the functionality.
     '''
-    def start(self):
+    def start_controller(self):
         pass
 
 
@@ -24,7 +24,7 @@ class Flow_Controller(object):
     An interface to stop the concrete class
     running.
     '''
-    def stop(self):
+    def stop_controller(self):
         pass
 
     '''

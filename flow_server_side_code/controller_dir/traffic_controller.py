@@ -1,6 +1,7 @@
 from interface_dir.flow_controller import Flow_Controller
 from SimpleXMLRPCServer import SimpleXMLRPCServer
 import threading
+import Queue
 import socket
 from pyroute2 import IPRoute
 from pyroute2.netlink.rtnl import RTM_DELQDISC
@@ -34,8 +35,13 @@ class Traffic_Controller(Flow_Controller):
     '''
     def _init_object(self, ip_address):
         self._m_server = SimpleXMLRPCServer(ip_address)
-        self._m_thread = None       # reference to the thread that
-                                    # runs this controller
+
+        self._m_upd_queue =  None   # stores updates
+
+        self._m_rcv_thread = None   # reference to the thread that
+                                    # accepts updates
+
+        self._m_upd_thread = None   # thread that performs updates
 
         self._m_infcs = {}          # for keeping track of IPv4 address :
                                     # interface matching
@@ -92,33 +98,58 @@ class Traffic_Controller(Flow_Controller):
     This method starts a new thread and the local
     SimpleXMLRPC server.
     '''
-    def start(self):
+    def start_controller(self):
+
+        # create shared types first
+        m_queue = Queue.Queue(1) # store at most one update
+
         self._m_server.register_function(self.update_flow_parameters,
                 'update_flow_parameters')
         # start a new thread for handling the RPC updates
-        self._m_thread = threading.Thread(target=self._m_server.serve_forever)
-        self._m_thread.start()
+        self._m_rcv_thread = threading.Thread(target=self._m_server.serve_forever)
+        self._m_rcv_thread.start()
+
+        # run a thread that performs traffic control updates
+        self._m_upd_thread = threading.Thread(target=self._wait_updates, args=(m_queue, ))
+        self._m_upd_thread.start()
+
+        # keep references to the shared objects
+        self._m_upd_queue = m_queue
+
+
 
     '''
     A way of stopping the RPC server.
     This method should usually be called when a session is done.
     '''
-    def stop(self):
+    def stop_controller(self):
         # since trying stopping an object that runs on another
         # thread, an excpetion might occur
         # This, however, should never happen since
         # only one thread can run at a time in the current
         # Python implementation
+
+
+        # notify all threads that
+        # the program is terminating
         try:
             self._m_server.shutdown()      # close the server
             self._m_server.close_server()  # clean up the server
-            self._m_thread.join()          # wait till the thread
-                                           # terminates
-        except RuntimeError:
+
+            # wait until other threads terminate
+            self._m_rcv_thread.join()
+
+        except: # ignore all exceptions
             pass
 
-        except:
-            raise
+        finally:
+            # add to the shared queue a None
+            # so that a background thread
+            # would terminate
+            print "Terminating the update thread in Traffic_controller"
+            self._m_upd_queue.put(None, block=True)
+            print "Enqueued a None"
+            self._m_upd_thread.join()
 
 
     '''
@@ -146,21 +177,22 @@ class Traffic_Controller(Flow_Controller):
     def update_flow_parameters(self, params):
         if(len(params) != Traffic_Controller.__ACTION_TUPLE_LENGTH):
             # invalid update
-            raise RuntimeError("Invalid update tuple")
+            print "Invalid update tuple"
+            return 'a'
 
-        print "--- Traffic_Controller: update_flow_parameters",
-        print "got called ---"
-        # check whether it is needed to retrieve the interface index
-        # TO DO: now only one interface is supoorted. Improve in the
-        # future
-        if self._m_server.server_address[0] in self._m_infcs:
-            if_idx = self._m_infcs[self._m_server.server_address[0]] # retrieve interface index
-        else:
-            # should never occur
-            raise RuntimeError("Invalid interface.")
 
-        # apply update scheduling rules
-        self._update_traffic_flow(if_idx, params)
+        try:
+            # try to send the updates to a background
+            # thread
+            self._m_upd_queue.put(params, block=False)
+
+        except Queue.Full:
+            pass  # ignore this exception
+
+        print "---- update_flow_parameters returns now ----"
+
+        return 'a'  # return to the rl server === the update received
+
 
     '''
     Helper method that uses the tc command to
@@ -170,22 +202,57 @@ class Traffic_Controller(Flow_Controller):
     '''
     def _update_traffic_flow(self, if_idx, params):
 
+
         class_idx = 0x10000 + params["priority"] # since priority [1, 6]
         rate = params["rate"]
         parent = 0x10000
+
 
         try:
             self._m_cntrl.tc(
                     RTM_NEWTCLASS, "htb", if_idx,
                     class_idx, parent=parent,
                     rate="{0}kbit".format(rate))
+            print "*** Traffic_Controller: has successfully updated ***"
         except NetlinkError as exp:
             # netlink error
-            raise exp(exp.message + " NetlinkError")
+            print "*** Traffic_Controller: NetlinkError: code = %i" % exp.code
+            print "Exception msg: %s", str(exp)
+            #raise RuntimeError(exp.message + " NetlinkError")
 
-        except Exception as exp:
+        except:
             # some other excpetion
-            raise exp(exp.message + " Not NetlinkError")
+            print "*** Traffic_Controller: NOT NetlinkError ***"
+            #raise RuntimeError(exp.message + " Not NetlinkError")
 
+
+    def _wait_updates(self, upd_queue):
+
+        # check whether it is needed to retrieve the interface index
+        # TO DO: now only one interface is supported. Improve in the
+        # future
+        if self._m_server.server_address[0] in self._m_infcs:
+            if_idx = self._m_infcs[self._m_server.server_address[0]] # retrieve interface index
+
+            while 1: # run until the program is being terminated
+                params = upd_queue.get(block=True)
+                if params == None: # a None might be returned in order
+                                   # to terminate this thread
+                    return
+
+                # apply the retrieved update
+                self._update_traffic_flow(if_idx, params)
+
+        else:
+            # should never occur
+            print "Invalid interface"
+            # stop the server
+            try:
+                self._m_server.shutdown()      # close the server
+                self._m_server.close_server()  # clean up the server
+                return
+
+            except:
+                return
 
 
