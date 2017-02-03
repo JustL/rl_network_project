@@ -16,7 +16,11 @@ from interface_dir.flow_interfaces import WAIT_FLOW_VALID, WAIT_FLOW_INVALID
 
 from multiprocessing import Process
 import Queue
-from socket import AF_INET, SOCK_STREAM, IPPROTO_TCP, SOL_SOCKET
+from socket import AF_INET
+from socket import SOCK_STREAM
+from socket import IPPROTO_TCP
+from socket import SOL_SOCKET
+from socket import SHUT_RDWR
 import time
 import sys
 
@@ -44,9 +48,11 @@ class Flow_Handler(Process):
     __CONST_TIME_VAL = 15 # 3 s of sleeping
 
 
-    def __init__(self, ip_address,  cmp_queue, inc_arr, flow_size, flow_pref_rate, flow_index, flow_priority=0):
+    def __init__(self, ip_address,  cmp_queue, inc_arr, flow_size,
+            flow_pref_rate, flow_index, flow_priority=0):
         super(Flow_Handler, self).__init__()
 
+        self._m_close    = True              # socket needs to be closed
         self._m_rem_addr = ip_address        # the ipv4 address of a remote server (including the port number)
         self._m_queue = cmp_queue            # queue for passing completed flows
         self._m_arr = inc_arr                # for storing incomplete flows
@@ -56,6 +62,8 @@ class Flow_Handler(Process):
         self._m_priority = ctypes.c_int(flow_priority)   # Linux stuff
 
     def run(self):
+
+        print "Flow_Handler: Flow index: %i" % (self._m_index)
         # below is a C-type code that can only work on Linux
         # machines. If this process is run on any other machine,
         # the process just terminates
@@ -189,9 +197,12 @@ class Flow_Handler(Process):
             while total_sent < self._m_size: # send the entire flow
                 sent_bytes = libc.send(sockfd, data[total_sent::1],
                         self._m_size, 0)
-                if sent_bytes  < 0:
-                    print "socket connection broken"
-                    libc.close(sockfd) # close socket
+                if sent_bytes  <= 0:
+                    print "Socket connection  broken or closed"
+                    if  self._m_close:
+                        libc.shutdwon(sockfd, SHUT_RDWR)
+                        libc.close(sockfd) # close socket
+                        self._m_close = False
                     return
 
 
@@ -208,9 +219,12 @@ class Flow_Handler(Process):
                 sent_bytes = libc.send(sockfd, TERM_MSG[total_sent::1],
                         MSG_LEN, 0)
 
-                if sent_bytes < 0:
-                    print "socket connection broken"
-                    libc.close(sockfd) # close socket
+                if sent_bytes <= 0:
+                    print "Socket connection broken or closed"
+                    if self._m_close:
+                        libc.shutdown(sockfd, SHUT_RDWR)
+                        libc.close(sockfd) # close socket
+                        self._m_close = False
                     return
 
                 total_sent += sent_bytes   # update counter
@@ -221,9 +235,12 @@ class Flow_Handler(Process):
                                           # message has been received
                 read_bytes = libc.recv(sockfd, chunk, CHUNK_SIZE, 0)
 
-                if read_bytes < 0:
-                    print "socket connection broken"
-                    libc.close(sockfd) # close socket
+                if read_bytes <= 0:
+                    print "Socket connection broken or closed"
+                    if self._m_close:
+                        libc.shutdown(sockfd, SHUT_RDWR)
+                        libc.close(sockfd) # close socket
+                        self._m_close = False
                     return
 
                 # update the received data
@@ -261,8 +278,11 @@ class Flow_Handler(Process):
         # load the linux system calls
         try:
             libc = ctypes.CDLL("libc.so.6", use_errno=True)
-
-            libc.close(self._m_socket) # close socket
+            if self._m_close: # socket has not been closed
+                              # before
+                libc.shutdown(self._m_socket, SHUT_RDWR)
+                libc.close(self._m_socket) # close socket
+                self._m_close = False
         except:
             pass
 

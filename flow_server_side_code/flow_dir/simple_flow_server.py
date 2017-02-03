@@ -14,7 +14,12 @@ from sock_addr_struct import Sockaddr_In
 
 import threading
 from multiprocessing import Process
-from socket import AF_INET, SOCK_STREAM, IPPROTO_TCP, SOL_SOCKET, socket as Socket
+from socket import AF_INET
+from socket import SOCK_STREAM
+from socket import IPPROTO_TCP
+from socket import SOL_SOCKET
+from socket import SHUT_RDWR
+from socket import socket as Socket
 import ctypes # for using native C data structures
 import sys
 
@@ -69,8 +74,9 @@ def sock_proc(client):
             # check only the last items of the received data
             read_bytes = libc.recv(client, chunk, MAX_READ, 0)
 
-            if read_bytes < 0:
-                print "socket connection broken"
+            if read_bytes <= 0:
+                print "Socket connection broken or closed"
+                libc.shutdown(client, SHUT_RDWR)
                 libc.close(client) # close socket and terminate
                 return
 
@@ -93,8 +99,9 @@ def sock_proc(client):
                     REPLY_MSG[total_sent:REPLY_LEN:1],
                     REPLY_LEN, 0) #send reply
 
-            if sent_bytes < 0:
-                print "socket connection broken"
+            if sent_bytes <= 0:
+                print "Socket connection broken or closed"
+                libc.shutdown(client, SHUT_RDWR)
                 libc.close(client) # close socket and terminate
                 return
 
@@ -201,6 +208,7 @@ class Simple_Flow_Server(object):
             if self._m_conns:
                 for conn in self._m_conns:
                     try:
+                        libc.shutdown(conn, SHUT_RDWR)
                         libc.close(conn)
                     except: # an exception might be raised since closing
                         # sockets that are handled by other processes
@@ -217,6 +225,7 @@ class Simple_Flow_Server(object):
             # processes and sockets have been handled
             self._m_conns = None
             self._m_procs = None
+            libc.close(self._m_sockfd, SHUT_RDWR)
             libc.close(self._m_sockfd) # close my own socket
 
             # send some data to my own socket to terminate

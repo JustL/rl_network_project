@@ -15,7 +15,13 @@ from pyroute2.netlink import NetlinkError
 class Traffic_Controller(Flow_Controller):
 
     __ACTION_TUPLE_LENGTH = 2     # so far : priority, rate
-    __PRIORITY_LIMIT      = 7     # to ensure that priority does not exceed limit
+    __PRIORITY_LIMIT      = 7     # to ensure that priority does
+                                  # not exceed limit
+
+
+    __UPDATE_PARAMETER    = 20    # update traffic paramters only
+                                  # after this number of sent updates
+                                  # from an rl server
     '''
     The class is a concrete implementation of the Flow_Controller
     interface. The class runs an RPC server on a separate thread
@@ -35,6 +41,11 @@ class Traffic_Controller(Flow_Controller):
     '''
     def _init_object(self, ip_address):
         self._m_server = SimpleXMLRPCServer(ip_address)
+
+        self._m_msg_count = Traffic_Controller.__UPDATE_PARAMETER
+                                    # this value prevetns the kernel
+                                    # from update message overflow
+
 
         self._m_upd_queue =  None   # stores updates
 
@@ -150,6 +161,7 @@ class Traffic_Controller(Flow_Controller):
             self._m_upd_queue.put(None, block=True)
             print "Enqueued a None"
             self._m_upd_thread.join()
+            self._m_cntrl.close()  # release system resources
 
 
     '''
@@ -202,6 +214,9 @@ class Traffic_Controller(Flow_Controller):
     '''
     def _update_traffic_flow(self, if_idx, params):
 
+        if self._m_msg_count != 0:
+            self._m_msg_count -= 1
+            return
 
         class_idx = 0x10000 + params["priority"] # since priority [1, 6]
         rate = params["rate"]
@@ -217,6 +232,8 @@ class Traffic_Controller(Flow_Controller):
         except NetlinkError as exp:
             # netlink error
             print "*** Traffic_Controller: NetlinkError: code = %i" % exp.code
+            # wait a bit until another kernel message can be sent
+            self._m_msg_count = Traffic_Controller.__UPDATE_PARAMETER
             print "Exception msg: %s", str(exp)
             #raise RuntimeError(exp.message + " NetlinkError")
 

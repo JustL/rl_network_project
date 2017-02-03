@@ -26,8 +26,8 @@ import time
 
 class Flow_Mediator(object):
 
-    __SLEEP_TIME = 10          # default value 10 seconds
-    __NUM_OF_STATIC_FLOWS = 75 # number of flows on this server
+    __SLEEP_TIME = 20          # value for update period in seconds
+    __NUM_OF_STATIC_FLOWS = 15 # number of flows on this server
     __FLOW_SIZES =      [100000, 250000, 1000000, 500000000] # flow sizes (bytes)
     __FLOW_RATES =      [100000, 200000] # flow rate Kbit/s
     __FLOW_PRIORITIES = [0, 1, 2, 3, 4, 5, 6]   # 7 requires admin
@@ -97,15 +97,15 @@ class Flow_Mediator(object):
         pr_generator = self._get_flow_priority()
 
         # for testing just make one flow
-        self._m_processes.append(Flow_Handler(ip_address=ip_addresses[0],
-                cmp_queue=self._m_cm_flows, inc_arr=self._m_arr,
-                flow_size = 1500,
-                flow_pref_rate=Flow_Mediator.__FLOW_RATES[0],
-                flow_index=0, flow_priority=4))
+        #self._m_processes.append(Flow_Handler(ip_address=ip_addresses[0],
+        #        cmp_queue=self._m_cm_flows, inc_arr=self._m_arr,
+        #        flow_size = 1500,
+        #        flow_pref_rate=Flow_Mediator.__FLOW_RATES[0],
+        #        flow_index=0, flow_priority=4))
 
-        self._m_processes[0].start()
+        #self._m_processes[0].start()
 
-        return
+        #return
 
         # loop through each of the flows and create a new Flow_Handler
         for host in xrange(0, num_of_hosts, 1):
@@ -157,7 +157,8 @@ class Flow_Mediator(object):
 
 
         # last host gets the remaining flows
-        host_flows[-1] = [num_flows[idx] - host_vector[idx]*(num_hosts-1) for idx in xrange(num_of_flow_types)]
+        host_flows[-1] = [num_flows[idx] - host_vector[idx]*(num_hosts-1)
+                for idx in xrange(num_of_flow_types)]
 
         # returns an array of flows
         return host_flows
