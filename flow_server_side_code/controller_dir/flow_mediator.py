@@ -29,9 +29,9 @@ class Flow_Mediator(object):
     __SLEEP_TIME = 20          # value for update period in seconds
     __NUM_OF_STATIC_FLOWS = 15 # number of flows on this server
     __FLOW_SIZES =      [100000, 250000, 1000000, 500000000] # flow sizes (bytes)
-    __FLOW_RATES =      [100000, 200000] # flow rate Kbit/s
-    __FLOW_PRIORITIES = [0, 1, 2, 3, 4, 5, 6]   # 7 requires admin
-    __FLOW_PRIORITY_PROB = [0.5, 0.2, 0.15, 0.05, 0.05, 0.03, 0.02] # priority porb
+    __FLOW_RATES =      [100000, 200000] # flow rate bit/s
+    __FLOW_PRIORITIES = [0, 2, 4, 6]     # follws Linux
+    __FLOW_PRIORITY_PROB = [0.65, 0.10, 0.2, 0.05] # priority porb
     __FLOW_PROBS =      [0.5, 0.35, 0.23, 0.02]   # flow probabilities
     '''
     This class acts as a mediator that interacts with the flows on this

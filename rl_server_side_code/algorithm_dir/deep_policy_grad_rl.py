@@ -101,7 +101,10 @@ class RL_Reward_Struct(object):
 class Deep_Policy_Grad_RL(RL_Flow_Algorithm):
 
     # Actions {priority (int), rate (kbits per second)}:
-    __ACTION_SPACE = [{"priority" : 1, "rate" : 100},
+    '''
+    __ACTION_SPACE = [{"priority" : 0, "rate" : 100},
+                 {"priority" : 0, "rate" : 200},
+                 {"priority" : 1, "rate" : 100},
                  {"priority" : 1, "rate" : 200},
                  {"priority" : 2, "rate" : 100},
                  {"priority" : 2, "rate" : 200},
@@ -113,13 +116,23 @@ class Deep_Policy_Grad_RL(RL_Flow_Algorithm):
                  {"priority" : 5, "rate" : 200},
                  {"priority" : 6, "rate" : 100},
                  {"priority" : 6, "rate" : 200}]
-
+    '''
+    # fisrt use this one since these ACTIONS are closer to Linux
+    __ACTION_SPACE = [{"priority" : 0, "rate" : 200},
+                 {"priority" : 0, "rate" : 400},
+                 {"priority" : 2, "rate" : 100},
+                 {"priority" : 2, "rate" : 200},
+                 {"priority" : 4, "rate" : 100},
+                 {"priority" : 4, "rate" : 200},
+                 {"priority" : 6, "rate" : 55},
+                 {"priority" : 6, "rate" : 105}]
+   
 
     # Hyperparameters
     __NO_OF_HIDDEN_UNITS = 5          # number that determines how many
                                       # hidden units are there
 
-    __NO_OF_ACTIONS      = 12         # num of classes =  num of
+    __NO_OF_ACTIONS      = 8         # num of classes =  num of
                                       # priorities * (num of rates)
 
     __NO_OF_FEATURES     = 70         # number of features a sample has

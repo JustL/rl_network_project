@@ -4,24 +4,22 @@ import threading
 import Queue
 import socket
 from pyroute2 import IPRoute
-from pyroute2.netlink.rtnl import RTM_DELQDISC
-from pyroute2.netlink.rtnl import RTM_NEWQDISC
-from pyroute2.netlink.rtnl import RTM_NEWTCLASS
-from pyroute2.netlink.rtnl import TC_H_ROOT
-from pyroute2.netlink import NetlinkError
+import subprocess
 
 
 
 class Traffic_Controller(Flow_Controller):
 
-    __ACTION_TUPLE_LENGTH = 2     # so far : priority, rate
-    __PRIORITY_LIMIT      = 7     # to ensure that priority does
-                                  # not exceed limit
+    __NIC_RATE            = "995mbit" # rate of a server's Nic card
+    __ACTION_TUPLE_LENGTH = 2         # so far : priority, rate
+    __PRIORITY_LIMIT      = 7         # to ensure that priority
+                                      # does not exceed limit
 
 
-    __UPDATE_PARAMETER    = 20    # update traffic paramters only
-                                  # after this number of sent updates
-                                  # from an rl server
+    __UPDATE_PARAMETER    = 5         # update traffic paramters
+                                      # only after this number
+                                      # of sent updates
+                                      # from an rl server
     '''
     The class is a concrete implementation of the Flow_Controller
     interface. The class runs an RPC server on a separate thread
@@ -57,49 +55,87 @@ class Traffic_Controller(Flow_Controller):
         self._m_infcs = {}          # for keeping track of IPv4 address :
                                     # interface matching
 
-        self._m_cntrl = IPRoute()   # an interface to control traffic
 
-        self._init_default_htb()    # for each interface set 'htb'
+        self._init_default_sch()    # for each interface set the
+                                    # selected scheduling qdisc
                                     # as the default
 
 
     '''
     Methid modified the default configurations of
-    traffic engineering and resets them to htb.
+    traffic engineering and resets them to the
+    selected scheduler.
 
     Raises:
         NetlinkErro: An error occured initializing TC subsystem.
         Exception:   Any other exception thrown during initialization.
     '''
 
-    def _init_default_htb(self):
-        idx = 0x10000
+    def _init_default_sch(self):
 
         # apply to all IPv4 interfaces
-        interfaces = self._m_cntrl.get_addr(family=socket.AF_INET)
+        ip_cntrl = IPRoute()
+        interfaces = ip_cntrl.get_addr(family=socket.AF_INET)
+
+        ip_cntrl.close() # no need to use anymore
 
         for ifc in interfaces:
-            # first of all add the interface to the ifc dictionary
-            if_index = ifc['index']               # interface index
-            self._m_infcs[ifc.get_attr('IFA_ADDRESS')] = if_index
+            # first of all add the interfaces to the ifc dictionary
+            if_label = ifc.get_attr("IFA_LABEL") # interface label
+            self._m_infcs[ifc.get_attr('IFA_ADDRESS')] = if_label
+
 
             try:
-                # delete the current discipline
-                self._m_cntrl.tc(RTM_DELQDISC, None, if_index, 0,
-                        parent=TC_H_ROOT)
-            except Exception as exp:
-                if isinstance(exp, NetlinkError) and exp.code == 2:
-                    # nothing to delete
-                    pass
+                subprocess.check_call(["tc", "qdisc", "del",
+                    "dev", if_label, "root"],
+                     stdin=None, stdout=None,
+                     stderr=None, shell=False)
+
+            except subprocess.CalledProcessError as exp:
+                if exp.returncode == 2:
+                    pass  # nothing to remove
+
                 else:
-                    # problem with the system
+                    raise # some other error
 
-                    raise
 
-            # scheduling has been deleted, add htb
+
+            # the default shceduler has been removed, add a new one
             try:
-                self._m_cntrl.tc(RTM_NEWQDISC, "htb", if_index,
-                        idx, default=0)
+                # adding a new queueing discipline (prio since
+                # it is classeful and similar
+                # to the default pfifo_fast)
+                subprocess.check_call(["tc", "qdisc", "add",
+                    "dev", if_label, "root", "handle", "1:0",
+                    "prio", "bands", "3", "priomap",
+                    "1", "2", "2", "2", "1", "2", "0", "0",
+                    "1", "1", "1", "1", "1", "1", "1", "1"],
+                    stdin=None, stdout=None,
+                    stderr=None, shell=False)
+
+
+                # adding queues to the root queueing
+                # discipline (prio has three classes)
+                subprocess.check_call(["tc", "qdisc", "add",
+                    "dev", if_label, "parent", "1:1", "tbf",
+                    "rate", "200mbit", "burst", "5kb", "latency",
+                    "70ms"], stdin=None, stdout=None,
+                    stderr=None, shell=False)
+
+
+                subprocess.check_call(["tc", "qdisc", "add",
+                    "dev", if_label, "parent", "1:2", "tbf",
+                    "rate", "600mbit", "burst", "5kb", "latency",
+                    "70ms"], stdin=None, stdout=None,
+                    stderr=None, shell=False)
+
+
+                subprocess.check_call(["tc", "qdisc", "add",
+                    "dev", if_label, "parent", "1:3", "tbf",
+                    "rate", "300mbit", "burst", "5kb", "latency",
+                    "70ms"], stdin=None, stdout=None,
+                    stderr=None, shell=False)
+
             except:
                 raise
 
@@ -157,11 +193,26 @@ class Traffic_Controller(Flow_Controller):
             # add to the shared queue a None
             # so that a background thread
             # would terminate
-            print "Terminating the update thread in Traffic_controller"
-            self._m_upd_queue.put(None, block=True)
-            print "Enqueued a None"
-            self._m_upd_thread.join()
-            self._m_cntrl.close()  # release system resources
+
+            # Since the background thread might have
+            # stopped due to system errors, to handle
+            # all such cases the queue is cleared
+            # before enqueueing an None
+            try:
+                self._m_upd_queue.get(block=False)
+            except Queue.Empty:
+                pass
+
+            finally:
+                # the queue must be empty now
+                print "Traffic_control: terminating the update",
+                print "thread -- enqueueing a None"
+                self._m_upd_queue.put(None, block=False)
+                print "Traffic_Control: sucessfully enqueueing",
+                print "a None, waiting for the thread to terminate\n"
+
+                self._m_upd_thread.join()
+
 
 
     '''
@@ -189,7 +240,8 @@ class Traffic_Controller(Flow_Controller):
     def update_flow_parameters(self, params):
         if(len(params) != Traffic_Controller.__ACTION_TUPLE_LENGTH):
             # invalid update
-            print "Invalid update tuple"
+            print "Traffic_Controller: update_flow_parameters:",
+            print "invalid tuple from the rl server"
             return 'a'
 
 
@@ -201,9 +253,35 @@ class Traffic_Controller(Flow_Controller):
         except Queue.Full:
             pass  # ignore this exception
 
-        print "---- update_flow_parameters returns now ----"
 
         return 'a'  # return to the rl server === the update received
+
+
+
+    '''
+    Helper method for converting a priority of a socket
+    to a class index.
+
+    Args:
+        prio : socket priority
+
+    return queueing discipline index
+    '''
+    def _convert_prio_to_class(self, prio):
+
+        # the current implementation has
+        # only three classes, so map prio to them
+        default_class = 2 # best effort is mapped
+                          # to second queue in Linux
+
+        if prio >=6: # interactive flow
+            return 1
+
+        elif prio == 2:
+            return 3
+
+
+        return default_class
 
 
     '''
@@ -211,37 +289,59 @@ class Traffic_Controller(Flow_Controller):
     update the traffic engineering parameters.
     For further information, please refer to the
     tc command manual and the pyroute2 documentation.
+
+    Args:
+        if_label : label of an ethernet interface
+                   (e.g., 'eth0')
+        params   : updates sent by a reinforcement server
+
+    return update state
     '''
-    def _update_traffic_flow(self, if_idx, params):
+    def _update_traffic_flow(self, if_label, params):
 
         if self._m_msg_count != 0:
-            self._m_msg_count -= 1
-            return
 
-        class_idx = 0x10000 + params["priority"] # since priority [1, 6]
+            self._m_msg_count -= 1
+
+            return True
+
+
+        # convert the received priorities to classes
+        class_idx = "1:" + str(
+                self._convert_prio_to_class(params["priority"]))
         rate = params["rate"]
-        parent = 0x10000
 
 
         try:
-            self._m_cntrl.tc(
-                    RTM_NEWTCLASS, "htb", if_idx,
-                    class_idx, parent=parent,
-                    rate="{0}kbit".format(rate))
-            print "*** Traffic_Controller: has successfully updated ***"
-        except NetlinkError as exp:
+            subprocess.check_call(
+                    ["tc", "qdisc", "change", "dev", if_label,
+                    "parent",  class_idx, "tbf",
+                    "rate", "{0}mbit".format(rate), "burst",
+                    "5kb", "latency", "70ms"], stdin=None,
+                    stdout=None, stderr=None, shell=False)
+            print "*** Traffic_Controller: _update_traffic_flow has",
+            print "successfully executed ***\n"
+
+        except subprocess.CalledProcessError as exp:
+            pass
             # netlink error
-            print "*** Traffic_Controller: NetlinkError: code = %i" % exp.code
-            # wait a bit until another kernel message can be sent
-            self._m_msg_count = Traffic_Controller.__UPDATE_PARAMETER
+            print "*** Traffic_Controller: NetlinkError:",
+            print "code = %i" % exp.returncode
             print "Exception msg: %s", str(exp)
-            #raise RuntimeError(exp.message + " NetlinkError")
+
 
         except:
-            # some other excpetion
-            print "*** Traffic_Controller: NOT NetlinkError ***"
-            #raise RuntimeError(exp.message + " Not NetlinkError")
+            # any other exception -- terminate the update thread
+            print "Traffic_Controller: _update_traffic_flow:",
+            print "unexpected exception"
+            return False
 
+
+        finally:
+            # next update should wait for a bit
+            self._m_msg_count = Traffic_Controller.__UPDATE_PARAMETER
+
+        return True
 
     def _wait_updates(self, upd_queue):
 
@@ -249,7 +349,8 @@ class Traffic_Controller(Flow_Controller):
         # TO DO: now only one interface is supported. Improve in the
         # future
         if self._m_server.server_address[0] in self._m_infcs:
-            if_idx = self._m_infcs[self._m_server.server_address[0]] # retrieve interface index
+            if_label = self._m_infcs[self._m_server.server_address[0]]
+            # retrieve interface label
 
             while 1: # run until the program is being terminated
                 params = upd_queue.get(block=True)
@@ -258,18 +359,26 @@ class Traffic_Controller(Flow_Controller):
                     return
 
                 # apply the retrieved update
-                self._update_traffic_flow(if_idx, params)
+                # if anything wrong with the system, terminate
+                if not self._update_traffic_flow(if_label, params):
+                    try:
+                        self._m_server.shutdown()
+                        self._m_server.close_server()
+                    except:
+                        pass
+                    finally:
+                        return
 
         else:
             # should never occur
-            print "Invalid interface"
             # stop the server
             try:
                 self._m_server.shutdown()      # close the server
                 self._m_server.close_server()  # clean up the server
-                return
 
             except:
+                pass
+            finally:
                 return
 
 
