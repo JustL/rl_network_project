@@ -19,7 +19,6 @@ from flow_dir.flow_handler import Flow_Handler
 import multiprocessing
 import Queue
 import xmlrpclib
-import sys
 import math
 import time
 
@@ -65,9 +64,6 @@ class Flow_Mediator(object):
     '''
     def _init_flows(self, rl_server, ip_addresses):
 
-        self._m_controller.start_controller() # start the traffic
-                                              # controller
-
 
         # try to connect to the remote rl server
         try:
@@ -78,15 +74,18 @@ class Flow_Mediator(object):
             print "Fault code: %d" % err.faultCode
             print "Fault string: %s" % err.faultString
 
-            self._m_controller.stop_controller() # stop the controller
-
-            sys.exit(-1)                    # error occurred
+            raise
 
         except:
             print "Some other exception related to RPC server"
-            self._m_controller.stop_controller()
-            sys.exit(-1)
 
+            raise
+
+        print "Starting controller"
+        self._m_controller.start_controller() # start the traffic
+                                              # controller
+
+        print "The controller has been started"
         # run a loop and create flows
         # get the number of flows for each flow size and remote host
         num_of_hosts  = len(ip_addresses)
@@ -96,16 +95,6 @@ class Flow_Mediator(object):
         # priority generator
         pr_generator = self._get_flow_priority()
 
-        # for testing just make one flow
-        #self._m_processes.append(Flow_Handler(ip_address=ip_addresses[0],
-        #        cmp_queue=self._m_cm_flows, inc_arr=self._m_arr,
-        #        flow_size = 1500,
-        #        flow_pref_rate=Flow_Mediator.__FLOW_RATES[0],
-        #        flow_index=0, flow_priority=4))
-
-        #self._m_processes[0].start()
-
-        #return
 
         # loop through each of the flows and create a new Flow_Handler
         for host in xrange(0, num_of_hosts, 1):
@@ -219,7 +208,7 @@ class Flow_Mediator(object):
                 pass
             except:
                 # some other exception occured
-                self.kill_processes()
+                pass
 
             # By using RPC, send the lists to the RL server
 
@@ -236,7 +225,7 @@ class Flow_Mediator(object):
                 self._m_proxy.pass_flow_info(param_list)
             except:
                 # means the proxy has been closed
-                self.kill_processes()
+                pass
 
 
 
@@ -258,10 +247,13 @@ class Flow_Mediator(object):
 
         self._m_processes = None # release resources
 
+
         # In addition to killing the started flow processes,
         # stop running the traffic controller.
+        print "Stopping my controller"
         self._m_controller.stop_controller()
 
+        print "Controller has bee stopped"
         # Before stopping the Flow_Mediator,
         # notify the remote rl server about it.
         try:

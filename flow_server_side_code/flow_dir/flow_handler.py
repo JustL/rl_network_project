@@ -150,6 +150,14 @@ class Flow_Handler(Process):
             # ignore if the queue is full
             pass
 
+        finally:
+            # save flow completion time
+            with  open(
+                    "flow_statistics/simple_flow_{0}.txt".format(
+                        self._m_index), "a") as file:
+                file.write("Flow size: {0} bytes, fct: {1} us\n".format(
+                    self._m_size, flow_cmpl_time))
+
 
 
     '''

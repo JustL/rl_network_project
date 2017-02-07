@@ -40,10 +40,11 @@ class Traffic_Controller(Flow_Controller):
     def _init_object(self, ip_address):
         self._m_server = SimpleXMLRPCServer(ip_address)
 
-        self._m_msg_count = Traffic_Controller.__UPDATE_PARAMETER
-                                    # this value prevetns the kernel
-                                    # from update message overflow
-
+        self._m_msg_count = 0
+                                    # this value prevetns the
+                                    # kernel from update
+                                    # message overflow
+        self._m_exit = None         # term flag
 
         self._m_upd_queue =  None   # stores updates
 
@@ -147,22 +148,27 @@ class Traffic_Controller(Flow_Controller):
     '''
     def start_controller(self):
 
+
         # create shared types first
-        m_queue = Queue.Queue(1) # store at most one update
+        m_queue = Queue.Queue(1)    # store at most one update
+        m_event = threading.Event() # stores an event for termination
 
         self._m_server.register_function(self.update_flow_parameters,
                 'update_flow_parameters')
         # start a new thread for handling the RPC updates
-        self._m_rcv_thread = threading.Thread(target=self._m_server.serve_forever)
+        self._m_rcv_thread = threading.Thread(
+                target=self._m_server.serve_forever)
         self._m_rcv_thread.start()
 
+
         # run a thread that performs traffic control updates
-        self._m_upd_thread = threading.Thread(target=self._wait_updates, args=(m_queue, ))
+        self._m_upd_thread = threading.Thread(
+                target=self._wait_updates, args=(m_queue, m_event))
         self._m_upd_thread.start()
 
         # keep references to the shared objects
         self._m_upd_queue = m_queue
-
+        self._m_exit = m_event
 
 
     '''
@@ -179,39 +185,31 @@ class Traffic_Controller(Flow_Controller):
 
         # notify all threads that
         # the program is terminating
-        try:
-            self._m_server.shutdown()      # close the server
-            self._m_server.close_server()  # clean up the server
 
-            # wait until other threads terminate
-            self._m_rcv_thread.join()
 
-        except: # ignore all exceptions
-            pass
-
-        finally:
-            # add to the shared queue a None
-            # so that a background thread
-            # would terminate
-
-            # Since the background thread might have
-            # stopped due to system errors, to handle
-            # all such cases the queue is cleared
-            # before enqueueing an None
+        # if the server has been started, terminate it
+        if self._m_rcv_thread:
             try:
-                self._m_upd_queue.get(block=False)
-            except Queue.Empty:
+                self._m_server.shutdown()
+                self._m_server.close()
+
+            except: # ignore exceptions
                 pass
 
             finally:
-                # the queue must be empty now
-                print "Traffic_control: terminating the update",
-                print "thread -- enqueueing a None"
-                self._m_upd_queue.put(None, block=False)
-                print "Traffic_Control: sucessfully enqueueing",
-                print "a None, waiting for the thread to terminate\n"
+                self._m_rcv_thread.join()
 
-                self._m_upd_thread.join()
+
+        print "Server thread has been closed"
+
+        # since the server is closed,
+        # no new updates arrive
+
+        if self._m_upd_queue != None:
+            self._m_exit.set() # notify the background thread
+            print "Waiting the background thread to terminate"
+            self._m_upd_thread.join() # wait the thread
+                                      # to terminate
 
 
 
@@ -343,42 +341,32 @@ class Traffic_Controller(Flow_Controller):
 
         return True
 
-    def _wait_updates(self, upd_queue):
+    def _wait_updates(self, upd_queue, term_event):
 
         # check whether it is needed to retrieve the interface index
         # TO DO: now only one interface is supported. Improve in the
         # future
+
+
         if self._m_server.server_address[0] in self._m_infcs:
             if_label = self._m_infcs[self._m_server.server_address[0]]
             # retrieve interface label
 
-            while 1: # run until the program is being terminated
-                params = upd_queue.get(block=True)
-                if params == None: # a None might be returned in order
-                                   # to terminate this thread
-                    return
+            while not term_event.is_set(): # run until the
+                                           # program is being
+                                           # terminated
+                try:
+                    params = upd_queue.get(block=False)
+                    # apply the retrieved update
+                    # if anything wrong with the system, terminate
+                    if not self._update_traffic_flow(if_label, params):
 
-                # apply the retrieved update
-                # if anything wrong with the system, terminate
-                if not self._update_traffic_flow(if_label, params):
-                    try:
-                        self._m_server.shutdown()
-                        self._m_server.close_server()
-                    except:
-                        pass
-                    finally:
-                        return
+                        return # terminate this thread
+
+                except Queue.Empty:
+                    pass
 
         else:
-            # should never occur
-            # stop the server
-            try:
-                self._m_server.shutdown()      # close the server
-                self._m_server.close_server()  # clean up the server
-
-            except:
-                pass
-            finally:
-                return
+            return # terminate action
 
 

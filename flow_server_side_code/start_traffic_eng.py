@@ -100,10 +100,10 @@ if __name__ == "__main__":
     flow_handler_thread.start()
 
     # run until this proces has to be terminated
-    while term_event:
+    while term_event != 0:
         pass
 
-
+    print "Flow_mediator to kill processes have to now"
     # stop the mediator
     try:
         mediator.kill_processes()
