@@ -25,10 +25,12 @@ term_event = 1
 def run_server(server_queue):
     # retrieve the server object
     server = server_queue.get()
+    print "start_simple_server: run_server"
     try:
         server.start_server()
-    except:
-        pass
+    except Exception as exp:
+        print "Exception: start_simple_Server: run_server:"
+        print exp
 
 
 def signal_term_handler(signal, frame):
@@ -40,24 +42,20 @@ def signal_term_handler(signal, frame):
 
 
 
-if __name__ == "__main__":
+def main(server_ip):
 
     # first initialize a server that listens and
     # sends reponses to other cluster servers.
     # This server is only needed for generating a flow.
 
-    if len(sys.argv) < 2:
-        print "Please enter a public IP iddress for a flow server",
-        print "(e.g., 175.159.10.14)"
-        sys.exit(0)
 
     # register a signal handler
     signal.signal(signal.SIGTERM, signal_term_handler)
 
     # create a new thread and a new server
     m_queue = Queue.Queue(1)
-    server = Simple_Flow_Server(ip_address=sys.argv[1],
-            port_num=SERVER_PORT)
+    server = Simple_Flow_Server(ip_address=server_ip,
+                port_num=SERVER_PORT)
     m_queue.put(server)  # a queue is used for passing the server object
 
     # create a thread that runs the server
@@ -77,3 +75,17 @@ if __name__ == "__main__":
 
     # wait until all started threads are done
     server_thread.join()
+
+
+if __name__ == "__main__":
+
+    # check whether enough parameters
+    # are passed
+    if len(sys.argv) < 2:
+        print "Please enter a public IP iddress for a flow server",
+        print "(e.g., 175.159.10.14)"
+
+    else:
+        main(sys.argv[1]) # start a server
+
+

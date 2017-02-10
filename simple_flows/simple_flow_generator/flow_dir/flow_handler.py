@@ -46,9 +46,12 @@ class Flow_Handler(Process):
 
 
     def __init__(self, ip_address, flow_size,
-            flow_index, flow_priority=0):
+            flow_index, flow_priority=0, host_index=1):
         super(Flow_Handler, self).__init__()
 
+
+        self._m_host_index = host_index      # for mininet to identify
+                                             # different hosts
         self._m_close    = True              # socket needs to be closed
         self._m_rem_addr = ip_address        # the ipv4 address of a
                                              #remote server
@@ -56,12 +59,15 @@ class Flow_Handler(Process):
 
         self._m_size = flow_size             # flow size
 
+        self._m_lsi  = 0                     # for counting the number
+        self._m_msi  = 0                     # of flows
+
         self._m_index = flow_index           # the index of this flow
         self._m_priority = ctypes.c_int(flow_priority)   # Linux stuff
 
     def run(self):
 
-
+        print "Flow_Handler has been started"
         # below is a C-type code that can only work on Linux
         # machines. If this process is run on any other machine,
         # the process just terminates
@@ -132,11 +138,22 @@ class Flow_Handler(Process):
     '''
     def _record_fct(self, flow_cmpl_time):
         # save flow completion time
+        # for recording the number of flows
+        if self._m_lsi + 1 < 0: # overflow
+            self._m_msi += 1   # increment number of
+                               # overflows
+
+            self._m_lsi = -1   # this value in order to
+                               # avoid an else statement`
+        self._m_lsi += 1
+
+
         with  open(
-                "flow_statistics/simple_flow_{0}.txt".format(
+                "flow_statistics_{0}/simple_flow_{1}.txt".format(
+                    self._m_host_index,
                     self._m_index), "a") as file:
-            file.write("Flow size: {0} bytes, fct: {1} us\n".format(
-                self._m_size, flow_cmpl_time))
+            file.write("Flow size: {0} bytes, fct: {1} us, overflows: {2}, flow counter: {3}\n".format(
+                self._m_size, flow_cmpl_time, self._m_msi, self._m_lsi))
 
 
 

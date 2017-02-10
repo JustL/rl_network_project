@@ -28,7 +28,10 @@ term_event = 1
 # run the flow mediator program
 def run_flow_mediator(mediator_queue):
     flow_mediator = mediator_queue.get()
-    flow_mediator.start_updating() # run the program
+    try:
+        flow_mediator.start_updating() # run the program
+    except:
+        pass
 
 
 
@@ -40,19 +43,11 @@ def signal_term_handler(signal, frame):
 
 
 
-if __name__ == "__main__":
-    # first step is to check if some server addresses have
-    # been passed for running
-    if len(sys.argv) < 2:
-        print "Please pass more arguments.",
-        print "There must be at least one public ip address:"
-        print "--- Remote server address(es)."
-        print "(e.g.,  143.125.15.16  ...)"
-        sys.exit(0)
+def start_generator(ip_addrs):
 
-
-    # the port number that a simple flow server listen on (refer to start_simple_server.py)
-    addresses = [tuple([sys.argv[idx], SERVER_PORT]) for idx in xrange(1, len(sys.argv), 1)]
+    # the port number that a simple flow server listen on
+    # (refer to start_simple_server.py)
+    addresses = [tuple([ip_, SERVER_PORT]) for ip_ in ip_addrs]
 
     # register signal term
     signal.signal(signal.SIGTERM, signal_term_handler)
@@ -96,3 +91,20 @@ if __name__ == "__main__":
 
     # wait until all the started  threads are terminated
     flow_handler_thread.join()
+
+
+if __name__ == "__main__":
+
+    # first step is to check if some server addresses have
+    # been passed for running
+    if len(sys.argv) < 2:
+        print "Please pass more arguments.",
+        print "There must be at least one public ip address:"
+        print "--- Remote server address(es)."
+        print "(e.g.,  143.125.15.16  ...)"
+
+    else: # run a new generator
+        start_generator(sys.argv[1::1])
+
+
+

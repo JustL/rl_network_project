@@ -52,6 +52,11 @@ class Flow_Mediator(object):
         # run a loop and create flows
         # get the number of flows for each flow size and remote host
         num_of_hosts  = len(ip_addresses)
+
+        print "No of hosts:", num_of_hosts
+        print "Remote server ip:", ip_addresses[0]
+        return
+
         flows_per_host = self._get_nums_of_flows(num_of_hosts)
 
 

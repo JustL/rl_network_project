@@ -31,6 +31,7 @@ separate process, the libc has to be re;oaded again
 '''
 def sock_proc(client):
 
+    print "Simple_Flow_Server: A conection has been made"
     # try to load the standard C library and the Linux sys calls
     libc = None
     try:
@@ -136,7 +137,7 @@ class Simple_Flow_Server(object):
         self._m_exit  = threading.Event() # a flag that tells the server to
                                          # keep looping
         self._m_lock = threading.Lock()  # a lock that protects data
-                                         # consistency withing this program
+                                         # consistency within this program
         self._m_sockfd = None            # a socket file descriptor
 
     '''
@@ -145,6 +146,9 @@ class Simple_Flow_Server(object):
     connections and handles them (passes to a new process/thread).
     '''
     def start_server(self):
+        print "Simple_Flow_Server: Starting the server"
+        print "Server's address:", self._m_ip
+        return
         # this method onyl works on Linux machines
         # check for the platform
         if not sys.platform.startswith("linux"):
@@ -193,7 +197,8 @@ class Simple_Flow_Server(object):
     '''
     def stop_server(self):
 
-        # this method can be called from a few threads so locking is needed
+        # this method can be called from a few threads
+        # so locking is needed
         with self._m_lock:
             # load  a new referece to the Linux system calls
             # since the previous one might be used by another thread
@@ -205,13 +210,16 @@ class Simple_Flow_Server(object):
 
             self._m_exit.set()  # stop looping
             # close all connections first
+
             if self._m_conns:
                 for conn in self._m_conns:
                     try:
                         libc.shutdown(conn, SHUT_RDWR)
                         libc.close(conn)
-                    except: # an exception might be raised since closing
-                        # sockets that are handled by other processes
+                    except: # an exception might
+                            # be raised since closing
+                            # sockets that are handled
+                            # by other processes
                         pass
 
             # stopp all the started processes
@@ -219,27 +227,33 @@ class Simple_Flow_Server(object):
                 for prc in self._m_procs:
                     if prc.is_alive():
                         prc.terminate()
-                        prc.join() # wait until the process stops
+
+
+                for prc in self._m_procs:
+                    prc.join()    # wait until the process stops
 
 
             # processes and sockets have been handled
             self._m_conns = None
             self._m_procs = None
-            libc.close(self._m_sockfd, SHUT_RDWR)
-            libc.close(self._m_sockfd) # close my own socket
 
-            # send some data to my own socket to terminate
-            # .accept system call
-            socket = None
+            if self._m_sockfd != None:
+                libc.close(self._m_sockfd, SHUT_RDWR)
+                libc.close(self._m_sockfd) # close my own socket
 
-            try:
-                socket = Socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
-                socket.connect(self._m_ip) # this should throw an
-                                           # exception
-            except:
-                # exception should be thrown, so handle it
-                if socket:
-                    socket.close()
+                # send some data to my own socket to terminate
+                # .accept system call
+                socket = None
+
+                try:
+                    socket = Socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
+                    socket.connect(self._m_ip) # this should
+                                                # throw an
+                                                # exception
+                except:
+                    # exception should be thrown, so handle it
+                    if socket:
+                        socket.close()
 
 
 
@@ -260,7 +274,8 @@ class Simple_Flow_Server(object):
         # a TCP socket
         sockfd = libc.socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
         if sockfd < 0:
-           raise RuntimeError("System error: cannot create a new socket")
+           print "System error: cannot create a new socket"
+           return
 
         m_addr = Sockaddr_In() # sock addr structure
         libc.memset(ctypes.byref(m_addr), 0, ctypes.sizeof(m_addr))
