@@ -40,23 +40,14 @@ def signal_term_handler(signal, frame):
 
 
 
-if __name__ == "__main__":
-
-    # first initialize a server that listens and
-    # sends reponses to other cluster servers.
-    # This server is only needed for generating a flow.
-
-    if len(sys.argv) < 2:
-        print "Please enter a public IP iddress for a flow server",
-        print "(e.g., 175.159.10.14)"
-        sys.exit(0)
+def main(server_ip):
 
     # register a signal handler
     signal.signal(signal.SIGTERM, signal_term_handler)
 
     # create a new thread and a new server
     m_queue = Queue.Queue(1)
-    server = Simple_Flow_Server(ip_address=sys.argv[1],
+    server = Simple_Flow_Server(ip_address=server_ip,
             port_num=SERVER_PORT)
     m_queue.put(server)  # a queue is used for passing the server object
 
@@ -77,3 +68,18 @@ if __name__ == "__main__":
 
     # wait until all started threads are done
     server_thread.join()
+
+
+
+if __name__ == "__main__":
+
+    # first initialize a server that listens and
+    # sends reponses to other cluster servers.
+    # This server is only needed for generating a flow.
+
+    if len(sys.argv) < 2:
+        print "Please enter a public IP iddress for a flow server",
+        print "e.g., 175.159.10.14"
+
+    else:
+        main(sys.argv[1]) # process a server

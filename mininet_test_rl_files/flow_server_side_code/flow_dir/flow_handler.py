@@ -45,19 +45,26 @@ SO_PRIORITY = 12                  # a Linux flag that enables setting a
 
 class Flow_Handler(Process):
     __release_version = 1
-    __CONST_TIME_VAL = 15 # 3 s of sleeping
+    __CONST_TIME_VAL =  3 # 3 s of sleeping
 
 
     def __init__(self, ip_address,  cmp_queue, inc_arr, flow_size,
-            flow_pref_rate, flow_index, flow_priority=0):
+            flow_pref_rate, flow_index, flow_priority=0, host_index="h1"):
         super(Flow_Handler, self).__init__()
 
+        self._m_host_index = host_index      # for mininet to identify
+                                             # different hosts
         self._m_close    = True              # socket needs to be closed
         self._m_rem_addr = ip_address        # the ipv4 address of a remote server (including the port number)
         self._m_queue = cmp_queue            # queue for passing completed flows
         self._m_arr = inc_arr                # for storing incomplete flows
         self._m_size = flow_size             # the size for this instance of the Flow_Handler class
         self._m_rate = flow_pref_rate        # required flow rate for this flow
+
+        self._m_lsi = 0                      # for counting the number
+        self._m_msi = 0                      # of finisehd flows
+
+
         self._m_index = flow_index           # the index of this flow in the incomplete flows array
         self._m_priority = ctypes.c_int(flow_priority)   # Linux stuff
 
@@ -152,11 +159,22 @@ class Flow_Handler(Process):
 
         finally:
             # save flow completion time
+            if self._m_lsi + 1 < 0:  # overflow
+                self._m_msi += 1     # increment number of
+                                     # overflows
+
+                self._m_lsi = -1     # this value used for
+                                     # avoiding an else statement
+
+            self._m_lsi += 1
+
             with  open(
-                    "flow_statistics/simple_flow_{0}.txt".format(
+                    "flow_statistics_{0}/simple_flow_{1}.txt".format(
+                        self._m_host_index,
                         self._m_index), "a") as file:
-                file.write("Flow size: {0} bytes, fct: {1} us\n".format(
-                    self._m_size, flow_cmpl_time))
+                        file.write("Flow size: {0} bytes, fct: {1} us, overflows: {2}, flow counter: {3}\n".format(
+                    self._m_size, flow_cmpl_time,
+                    self._m_msi, self._m_lsi))
 
 
 

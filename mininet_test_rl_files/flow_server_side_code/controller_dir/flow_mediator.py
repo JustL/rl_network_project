@@ -26,8 +26,8 @@ import time
 class Flow_Mediator(object):
 
     __SLEEP_TIME = 20          # value for update period in seconds
-    __NUM_OF_STATIC_FLOWS = 15 # number of flows on this server
-    __FLOW_SIZES =      [100000, 250000, 1000000, 500000000] # flow sizes (bytes)
+    __NUM_OF_STATIC_FLOWS = 2 # number of flows on this server
+    __FLOW_SIZES =      [100, 250, 1000, 500] # flow sizes (bytes)
     __FLOW_RATES =      [100000, 200000] # flow rate bit/s
     __FLOW_PRIORITIES = [0, 2, 4, 6]     # follws Linux
     __FLOW_PRIORITY_PROB = [0.65, 0.10, 0.2, 0.05] # priority porb
@@ -39,7 +39,8 @@ class Flow_Mediator(object):
     the flows and the rl server to communicate with each others.
     '''
 
-    def __init__(self, rl_server, ip_addresses,  controller, wf_type):
+    def __init__(self, host_index, rl_server, ip_addresses,
+            controller, wf_type):
         self._m_proxy = None              # a connection to the RL server
         self._m_controller = controller   # for comminication with the local RPC
         self._m_exit = multiprocessing.Event() # flag for temination
@@ -54,7 +55,7 @@ class Flow_Mediator(object):
         self._m_processes = []
 
 
-        self._init_flows(rl_server, ip_addresses)
+        self._init_flows(host_index, rl_server, ip_addresses)
 
     '''
     Helper method to initialize the flows on
@@ -62,7 +63,7 @@ class Flow_Mediator(object):
     servers are communicating ==> 25 flows per
     server-to-server connection.
     '''
-    def _init_flows(self, rl_server, ip_addresses):
+    def _init_flows(self, h_index, rl_server, ip_addresses):
 
 
         # try to connect to the remote rl server
@@ -116,7 +117,8 @@ class Flow_Mediator(object):
                         flow_pref_rate=Flow_Mediator.__FLOW_RATES[m_index %
                         len(Flow_Mediator.__FLOW_RATES)],
                         flow_index=m_index,
-                        flow_priority=pr_generator.next()))
+                        flow_priority=pr_generator.next(),
+                        host_index=h_index))
 
                     self._m_processes[-1].start() # start a flow
                     m_index += 1                  # update the index

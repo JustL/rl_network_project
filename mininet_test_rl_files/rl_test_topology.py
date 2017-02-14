@@ -20,14 +20,14 @@ Topology:
             /            \
            /              \
         tor_1            tor_2
-       |    |           |    |
-       h1   h2         h3    h4
+       |    |           |  |  |
+       h1   h2         h3  h4 h5(rl server)
 
 
 '''
 
-CONTROLLER_PORT = 13458
-NUM_OF_HOSTS = 2
+CONTROLLER_PORT = 13557
+NUM_OF_HOSTS = 5
 term_signal = 1    # for terminating this process
 
 
@@ -178,6 +178,7 @@ def simpleTest():
     # references to the processes
     server_pids = {}       # pids of servers
     generator_pids = {}    # pids of flow generators
+    rl_server_pids = {}    # pids of rl servers
 
 
     # create server commands and flow generator
@@ -188,12 +189,36 @@ def simpleTest():
     generator_cmd_beg = "nohup python2.7 start_flow_generator.py {0} "
     generator_cmd_end = " > generator_result_{0}.out &"
 
+    rl_server_cmd  = "nohup python2.7 start_rl_server.py {0} > rl_server_{1}.out &"
+
+
+
+    NO_FLOW_SERVERS = len(net.hosts) - 1 # last server is only rl server
+
+
+    # the reinforcement server must be
+    # started first
+    rl_host = net.get("h{0}".format(NUM_OF_HOSTS))
+
+
+    rl_return = rl_host.cmd(rl_server_cmd.format(rl_host.IP(), rl_host.name))
+
+    # some text was returned
+    if rl_return != None and rl_return != "":
+        pid = get_pid(rl_return)
+
+        if pid != None:
+            # pid has beeen successfully
+            # retrieved
+            rl_server_pids[rl_host.name] = pid
+
 
     # loop through all created hosts and
     # start running the server application on them
 
-    for host in net.hosts:
+    for h_idx in xrange(1, NO_FLOW_SERVERS + 1, 1):
         # execute the command
+        host = net.get("h{0}".format(h_idx))
         srv_code = host.cmd(server_cmd.format(host.IP(), host.name))
 
         # store pid
@@ -212,14 +237,17 @@ def simpleTest():
 
 
     # initialize the flow generators
-    for host in net.hosts:
+    for h_idx in xrange(1, NO_FLOW_SERVERS + 1, 1):
+
+        host = net.get("h{0}".format(h_idx))
         remote_ips = [] # other servers
 
-        for remote in net.hosts:
+        for r_idx in xrange(1, NO_FLOW_SERVERS + 1, 1):
             # add all hosts except for this host
-            if host.name == remote.name:
+            if h_idx == r_idx:
                 continue
 
+            remote = net.get("h{0}".format(r_idx))
             remote_ips.append(remote.IP())
             remote_ips.append(" ") # separator
 
@@ -248,8 +276,17 @@ def simpleTest():
 
 
     # stop all applications starting
-    # with the servers
+    # with the rl server(s)
 
+    for key, rl_pid in rl_server_pids.items():
+
+        rl_host = net.get(key)
+        if rl_host != None:
+            rl_host.cmd("sudo kill -s SIGTERM {0} &".format(rl_pid))
+
+
+    # Once the rl servers have been
+    # stopped, terminate simple servers.
     for host in net.hosts:
 
         pid = server_pids.get(host.name, None)

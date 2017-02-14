@@ -266,9 +266,9 @@ class Simple_Flow_Server(object):
         libc.memset(ctypes.byref(m_addr), 0, ctypes.sizeof(m_addr))
 
         # initialize the address struct with the passed addresses
-        m_addr.sin_damily = ctypes.c_short(AF_INET)
-        m_addr.sin_addr.s_addr = ctypes.c_ulong(libc.inet_addr(self._m_ip[0]))
-        m_addr.sin_port = ctypes.c_ushort(libc.htons(self._m_ip[1]))
+        m_addr.sin_family = AF_INET
+        m_addr.sin_addr.s_addr = libc.inet_addr(self._m_ip[0])
+        m_addr.sin_port = libc.htons(self._m_ip[1])
 
         # address structure and a socket are built, bind and start listening
         if libc.bind(sockfd, ctypes.byref(m_addr), ctypes.sizeof(m_addr)) < 0:
