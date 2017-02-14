@@ -31,7 +31,8 @@ def run_flow_mediator(mediator_queue):
     try:
         flow_mediator.start_updating() # run the program
     except:
-        pass
+        print "Flow_Mediator start_upadting exception"
+        return
 
 
 
@@ -43,7 +44,8 @@ def signal_term_handler(signal, frame):
 
 
 
-def start_generator(ip_addrs):
+def start_generator(h_index, ip_addrs):
+
 
     # the port number that a simple flow server listen on
     # (refer to start_simple_server.py)
@@ -61,11 +63,12 @@ def start_generator(ip_addrs):
 
     # might raise an exception
     try:
-        mediator = Flow_Mediator(ip_addresses=addresses)
+        mediator = Flow_Mediator(host_index = h_index,
+                ip_addresses=addresses)
 
     except:
-        print "Flow Medaitor could not be instantiated"
-        sys.exit(-1)
+        print "Flow Mediator could not be instantiated"
+        return
 
 
     # need to use a Queue to pass a reference to
@@ -95,16 +98,19 @@ def start_generator(ip_addrs):
 
 if __name__ == "__main__":
 
+
     # first step is to check if some server addresses have
     # been passed for running
-    if len(sys.argv) < 2:
+    if len(sys.argv) < 3:
         print "Please pass more arguments.",
-        print "There must be at least one public ip address:"
+        print "There must be a unique index that identifies"
+        print "this machine"
+        print "Also, there must be at least one public ip address:"
         print "--- Remote server address(es)."
-        print "(e.g.,  143.125.15.16  ...)"
+        print "e.g., h1  143.125.15.16"
 
     else: # run a new generator
-        start_generator(sys.argv[1::1])
 
+        start_generator(sys.argv[1], sys.argv[2::1])
 
 

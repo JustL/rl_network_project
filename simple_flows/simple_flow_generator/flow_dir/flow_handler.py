@@ -46,15 +46,18 @@ class Flow_Handler(Process):
 
 
     def __init__(self, ip_address, flow_size,
-            flow_index, flow_priority=0, host_index=1):
+            flow_index, flow_priority=0, host_index="h1"):
         super(Flow_Handler, self).__init__()
 
+
+        print "Flow_Handler: Flow_Handler:",
+        print "rm_server = '%s'" % (ip_address, )
 
         self._m_host_index = host_index      # for mininet to identify
                                              # different hosts
         self._m_close    = True              # socket needs to be closed
         self._m_rem_addr = ip_address        # the ipv4 address of a
-                                             #remote server
+                                             # remote server
                                              # (including the port number)
 
         self._m_size = flow_size             # flow size
@@ -65,9 +68,9 @@ class Flow_Handler(Process):
         self._m_index = flow_index           # the index of this flow
         self._m_priority = ctypes.c_int(flow_priority)   # Linux stuff
 
+
     def run(self):
 
-        print "Flow_Handler has been started"
         # below is a C-type code that can only work on Linux
         # machines. If this process is run on any other machine,
         # the process just terminates
@@ -115,15 +118,24 @@ class Flow_Handler(Process):
         libc.memset(ctypes.byref(serv_addr), 0, ctypes.sizeof(serv_addr))
 
         # start initializeing the address structure
-        serv_addr.sin_family = ctypes.c_short(AF_INET)
-        serv_addr.sin_addr.s_addr = libc.inet_addr(self._m_rem_addr[0]) # a tuple -- ip a string
-        serv_addr.sin_port = libc.htons(ctypes.c_ushort(self._m_rem_addr[1]))  # a tuple -- port is an integer
+        serv_addr.sin_family = AF_INET
+        serv_addr.sin_addr.s_addr = libc.inet_addr(self._m_rem_addr[0])
+                                                         # a tuple -- ip a string
+        serv_addr.sin_port = libc.htons(self._m_rem_addr[1])
+                                                         # a tuple -- port is an integer
+
+        print "Flow_Handler: serv_addr:"
+        print "sin_family:", serv_addr.sin_family
+        print "sin_addr.s_addr:", serv_addr.sin_addr.s_addr
+        print "sin_port:", serv_addr.sin_port
 
         # done with the server address
         # It is time to try to connect
         if libc.connect(sockfd, ctypes.byref(serv_addr),
                         ctypes.sizeof(serv_addr)) < 0:
-            print "Socket could not connect to a remote server"
+
+            print "\nSocket could not connect to a remote server"
+            print "errno: %i\n" % (ctypes.get_errno(), )
             libc.close(sockfd)  # close socket first
             return
 
@@ -170,7 +182,7 @@ class Flow_Handler(Process):
         data[0::1] = "0"*self._m_size
         CHUNK_SIZE = 2048
         chunk = (ctypes.c_char*CHUNK_SIZE)()      # a buffer to store
-                                                # received data
+                                                  # received data
 
         # initialize some message constants
         MSG_LEN = len(PROTOCOL_SIGNAL[0])

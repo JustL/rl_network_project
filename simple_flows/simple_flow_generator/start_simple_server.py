@@ -44,6 +44,9 @@ def signal_term_handler(signal, frame):
 
 def main(server_ip):
 
+    # check if a port number has been passed
+
+    print "Server_ip:", server_ip
     # first initialize a server that listens and
     # sends reponses to other cluster servers.
     # This server is only needed for generating a flow.
@@ -79,13 +82,13 @@ def main(server_ip):
 
 if __name__ == "__main__":
 
+
     # check whether enough parameters
     # are passed
     if len(sys.argv) < 2:
         print "Please enter a public IP iddress for a flow server",
-        print "(e.g., 175.159.10.14)"
+        print "e.g., 175.159.10.14"
 
     else:
         main(sys.argv[1]) # start a server
-
 

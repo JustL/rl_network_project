@@ -2,11 +2,13 @@ from mininet.topo import Topo
 from mininet.net import Mininet
 from mininet.util import dumpNodeConnections
 from mininet.log import setLogLevel
-#from mininet.clean import Cleanup
 
 
-import time
 import signal
+import time
+
+
+
 '''
 This file contains a very simple Topology for running simple
 flows.
@@ -26,12 +28,18 @@ Topology:
 '''
 
 NUM_OF_HOSTS = 4
-term_sign    = 1
+term_signal = 1    # for terminating this process
 
 
-def signal_handler(signal, frame):
-    global term_sign
-    term_sign = 0
+'''
+Function gets notified when the user wants to
+terminate this program.
+'''
+def signal_term_handler(signum, frame):
+    global term_signal
+    term_signal = 0    # reset the flag
+
+
 
 
 class SingleSwitchTopo(Topo):
@@ -62,10 +70,42 @@ class SingleSwitchTopo(Topo):
 
 
 
+'''
+Function reads a string
+and finds a pid in the string.
+'''
+def get_pid(return_string):
+
+    # first split into words/expressions
+    words = return_string.split(" ")
+
+    pid = None
+
+    # look for the first integer
+    for item in words:
+        try:
+            pos_pid = int(item, 10)
+            # no exception -- found an integer
+            pid = pos_pid
+            break
+
+        except ValueError:
+            pass
+
+    return pid
+
+
+
 
 def simpleTest():
+
+    # first register this program for
+    # handling the SIGTERM flag
+    signal.signal(signal.SIGTERM, signal_term_handler)
+
+
     # Create a simple topology
-    # testing the rl approahc
+    # testing the rl approach
     topo = SingleSwitchTopo(n=NUM_OF_HOSTS)
     net = Mininet(topo)
     net.start()
@@ -77,53 +117,114 @@ def simpleTest():
     print "\nGetting network information about the created hosts:\n"
 
     for host in net.hosts:
-        print "Host '{0}' has".format(host.name),
-        print "IP address: '{0}',".format(host.IP()),
-        print "MAC address: '{0}'".format(host.MAC())
+        print "Host '%s' has IP address: '%s'," % (host.name, host.IP()),
+        print "and MAC address: '%s'" % (host.MAC(), )
 
     print "\n********************************************************************\n"
 
 
-    server_pids = {}   # store process ids in a dictionary
-    # command that are run by each of the hosts
+    # references to the processes
+    server_pids = {}       # pids of servers
+    generator_pids = {}    # pids of flow generators
+
+
+    # create server commands and flow generator
+    # commands that will be executed by each of
+    # the cluster server
     server_cmd = "nohup python2.7 start_simple_server.py {0} > result_server_{1}.out &"
-    #generator_cmd = "nohup python2.7 start_flow_generator.py {0} > generator_result_{1}.out"
 
-    # first start running a simple server
-    # on each of the hosts
+    generator_cmd_beg = "nohup python2.7 start_flow_generator.py {0} "
+    generator_cmd_end = " > generator_result_{0}.out &"
+
+
+    # loop through all created hosts and
+    # start running the server application on them
+
     for host in net.hosts:
-        val = host.cmd(server_cmd.format(host.IP(),
-            host.name))
-        if val !=  None and val != "":
-            val = val.split(" ")
-            pid = val[1] # second char should be the pid
-            server_pids[host.name] = pid[0:-2:1] # get rid of \r\n
+        # execute the command
+        srv_code = host.cmd(server_cmd.format(host.IP(), host.name))
+
+        # store pid
+        if srv_code != None and srv_code != "":
+            pid = get_pid(srv_code)
+
+            if pid != None:
+                # a pid was found
+                server_pids[host.name] = pid
+
+
+    # servers are running
+    time.sleep(10) # give some time to successfully
+                   # initialize the servers
 
 
 
-    # give some time for the servers to properly start
-    time.sleep(10)
+    # initialize the flow generators
+    for host in net.hosts:
+        remote_ips = [] # other servers
+
+        for remote in net.hosts:
+            # add all hosts except for this host
+            if host.name == remote.name:
+                continue
+
+            remote_ips.append(remote.IP())
+            remote_ips.append(" ") # separator
 
 
+        # start the flow generator appplication on 'host'
+        exec_cmd = generator_cmd_beg.format(host.name) + "".join(remote_ips)  + generator_cmd_end.format(host.name)
 
-    while term_sign:
+        flow_id = host.cmd(exec_cmd)
+
+        if flow_id != None and flow_id != "":
+            pid = get_pid(flow_id)
+
+            if pid != None:
+                # found pid
+                generator_pids[host.name] = pid
+
+
+    # done starting flows
+
+    # run until the user wants to terminate
+    while term_signal:
         pass
 
-    # stopp all processes first
+
+    # stop all applications starting
+    # with the servers
+
     for host in net.hosts:
+
         pid = server_pids.get(host.name, None)
         if pid != None:
-            host.cmd("kill -s SIGTERM {0}".format(
-                server_pids[host.name]))
+            # stop the server that runs on
+            # the host
+            host.cmd("sudo kill -s SIGTERM {0} &".format(pid))
+            del server_pids[host.name] # delete the pid
+
+
+    # servers have been closed
+    # start stopping the generators
+    for host in net.hosts:
+
+        pid = generator_pids.get(host.name, None)
+        if pid != None:
+            # stop the flow generator that runs
+            #  on the host
+            host.cmd("sudo kill -s SIGTERM {0} &".format(pid))
+            del generator_pids[host.name] # delete the element
+
+
+
+    # all processes have been stopped
+    # and killed
 
     net.stop()
 
 
 if __name__ == "__main__":
-
-    # register for SIGTERM reception
-    signal.signal(signal.SIGTERM, signal_handler)
-
     # Tell mininet to print useful information
     setLogLevel("info")
     simpleTest()

@@ -24,6 +24,7 @@ import ctypes # for using native C data structures
 import sys
 
 
+
 '''
 This function is used by a separate process to
 run a connection. Since the function runs in a
@@ -31,7 +32,7 @@ separate process, the libc has to be re;oaded again
 '''
 def sock_proc(client):
 
-    print "Simple_Flow_Server: A conection has been made"
+    print "A new connection has been started"
     # try to load the standard C library and the Linux sys calls
     libc = None
     try:
@@ -146,9 +147,10 @@ class Simple_Flow_Server(object):
     connections and handles them (passes to a new process/thread).
     '''
     def start_server(self):
+
         print "Simple_Flow_Server: Starting the server"
         print "Server's address:", self._m_ip
-        return
+
         # this method onyl works on Linux machines
         # check for the platform
         if not sys.platform.startswith("linux"):
@@ -156,10 +158,10 @@ class Simple_Flow_Server(object):
            return
 
         # construct a Linux socket
-        try:
-            (sockfd, libc) = self._init_linux_rec()
-        except:
-            raise
+
+        (sockfd, libc) = self._init_linux_rec()
+        if sockfd < 0:
+            return
 
         # run forever
         try:
@@ -206,7 +208,8 @@ class Simple_Flow_Server(object):
             try:
                 libc = ctypes.CDLL("libc.so.6", use_errno=True)
             except:
-                raise RuntimeError("'libc.so.6' could not be loaded")
+                print "'libc.so.6' could not be loaded"
+                return
 
             self._m_exit.set()  # stop looping
             # close all connections first
@@ -268,32 +271,40 @@ class Simple_Flow_Server(object):
         try:
             libc = ctypes.CDLL("libc.so.6", use_errno=True)
         except:
-             raise RuntimeError("'libc.so could not be loaded'")
+             print "'libc.so' could not be loaded"
+             return (-1, -1)
 
         # library and system calls have been loaded, use them to create
         # a TCP socket
         sockfd = libc.socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
         if sockfd < 0:
            print "System error: cannot create a new socket"
-           return
+           return (-1, -1)
 
         m_addr = Sockaddr_In() # sock addr structure
         libc.memset(ctypes.byref(m_addr), 0, ctypes.sizeof(m_addr))
 
         # initialize the address struct with the passed addresses
-        m_addr.sin_damily = ctypes.c_short(AF_INET)
-        m_addr.sin_addr.s_addr = ctypes.c_ulong(libc.inet_addr(self._m_ip[0]))
-        m_addr.sin_port = ctypes.c_ushort(libc.htons(self._m_ip[1]))
+        m_addr.sin_family = AF_INET
+        m_addr.sin_addr.s_addr = libc.inet_addr(self._m_ip[0])
+        m_addr.sin_port = libc.htons(self._m_ip[1])
+
+        print "Simple_Flow_Server m_addr:"
+        print "sin_family:", m_addr.sin_family
+        print "sin_addr.s_addr:", m_addr.sin_addr.s_addr
+        print "sin_port:", m_addr.sin_port
 
         # address structure and a socket are built, bind and start listening
         if libc.bind(sockfd, ctypes.byref(m_addr), ctypes.sizeof(m_addr)) < 0:
-            raise RuntimeError("System error: cannot bind")
+            print "System error: cannot bind"
+            return (-1, -1)
 
         if libc.listen(sockfd, Simple_Flow_Server.__LISTEN_QUEUE) < 0:
-            raise RuntimeError("System error: cannot start listening")
+            print"System error: cannot start listening"
+            return (-1, -1)
 
         # done initializing the required Linux resources
-        self._m_sockfd = sockfd  # for clsosing this socket later
+        self._m_sockfd = sockfd  # for closing this socket later
         return (sockfd, libc)
 
 
