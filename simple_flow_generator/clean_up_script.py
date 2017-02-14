@@ -7,7 +7,7 @@ def clean_up():
 
     clean_cmd = "sudo pkill -f --signal {0} -u root {1}"
 
-    topo_exit = "'python2.7 simple_flow_test_topology.py'"
+    topo_exit = "'python2.7 flow_test_topology.py'"
     server_exit = "'python2.7 start_simple_server.py'"
     flow_exit = "'python2.7 start_flow_generator.py'"
     SIGTERM = "SIGTERM"
