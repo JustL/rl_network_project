@@ -25,9 +25,9 @@ import time
 
 class Flow_Mediator(object):
 
-    __SLEEP_TIME = 20          # value for update period in seconds
-    __NUM_OF_STATIC_FLOWS = 2 # number of flows on this server
-    __FLOW_SIZES =      [100, 250, 1000, 500] # flow sizes (bytes)
+    __SLEEP_TIME = 20           # value for update period in seconds
+    __NUM_OF_STATIC_FLOWS = 100 # number of flows on this server
+    __FLOW_SIZES =      [100000, 250000, 100000000, 500000000] # flow sizes (bytes)
     __FLOW_RATES =      [100000, 200000] # flow rate bit/s
     __FLOW_PRIORITIES = [0, 2, 4, 6]     # follws Linux
     __FLOW_PRIORITY_PROB = [0.65, 0.10, 0.2, 0.05] # priority porb

@@ -14,7 +14,6 @@ import signal
 import sys
 
 
-
 # files from the project
 from interface_dir.flow_controller import Flow_Controller
 from start_simple_server import SERVER_PORT
@@ -43,8 +42,37 @@ def signal_term_handler(signal, frame):
 
 
 
+'''
+Function returns a mapping from the
+passed string to a Python dictionary.
+'''
+def _convert_into_dict(enc_string):
 
-def main(host, local_ip, rl_server_ip, remote_ips):
+    result_dict = {}
+
+    sep_items = "//"    # extracts items of a dict
+    sep_key_val = ":"   # separates the key and the value
+
+    items = enc_string.split(sep_items)
+    items = items[0:-1:1] # discard the last item
+
+    # loop through items and
+    # put them in the dictionary
+
+    for item in items:
+        prop_dict_tuple = item.split(sep_key_val)
+
+        # add an item to the result dictionary
+        result_dict[prop_dict_tuple[0]] = prop_dict_tuple[1]
+
+
+    return result_dict
+
+
+
+
+def main(host, host_infcs, local_ip, rl_server_ip, remote_ips):
+
     RL_SERVER_PORT = 32202
     # the reinforcement server must
     # listen on this port number
@@ -65,8 +93,9 @@ def main(host, local_ip, rl_server_ip, remote_ips):
     # generating workflows
 
     wait_flow_type = RL_Wait_Flow()  # determines a C array's type
-    con = Traffic_Controller((local_ip,
-        Flow_Controller.CONTROLLER_PORT_NUM))
+    con = Traffic_Controller(h_interfaces=host_infcs,
+            ip_address=(local_ip,
+            Flow_Controller.CONTROLLER_PORT_NUM))
     mediator = None
 
     # might raise an exception
@@ -111,17 +140,23 @@ def main(host, local_ip, rl_server_ip, remote_ips):
 if __name__ == "__main__":
     # first step is to check if some server addresses have
     # been passed for running
-    if len(sys.argv) < 5:
+    if len(sys.argv) < 6:
         print "Please pass more arguments.",
         print "There must be a host index and"
         print "at least three public ip addresses:"
-        print "--- host index within mininet"
+        print "--- host index withing mininet"
+        print "--- all host interfaces for mininet;"
         print "--- IPv4 of this server's interface;"
         print "--- Reinforcement learnig server address;"
         print "--- Remote server address(es)."
-        print "e.g. h1 175.2.11.123  143.125.15.13  143.125.15.16  ..."
+        print "e.g. h1 eth0:10.0.0.1//eth1:10.0.0.2// 175.2.11.123",
+        print "143.125.15.13  143.125.15.16  ..."
 
     else:
+
+        # preprocess interfaces
+        interfaces = _convert_into_dict(sys.argv[2])
+
         # start running a flow generator
-        main(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[3::1])
+        main(sys.argv[1], interfaces, sys.argv[3], sys.argv[4], sys.argv[5::1])
 

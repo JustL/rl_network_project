@@ -24,6 +24,7 @@ from socket import SHUT_RDWR
 import time
 import sys
 
+
 # below are C strucutres that should only be used on Linux
 # machines
 import ctypes
@@ -71,6 +72,7 @@ class Flow_Handler(Process):
     def run(self):
 
         print "Flow_Handler: Flow index: %i" % (self._m_index)
+
         # below is a C-type code that can only work on Linux
         # machines. If this process is run on any other machine,
         # the process just terminates
@@ -134,7 +136,7 @@ class Flow_Handler(Process):
 
 
     '''
-    A helper method that registers a starting/flwoing flow.
+    A helper method that registers a starting/flowing flow.
     '''
     def _register_for_flow(self):
         attr = (self._m_size, self._m_priority.value, self._m_rate)  # create a tuple and pass it to the shared waiting flow array
@@ -169,11 +171,11 @@ class Flow_Handler(Process):
             self._m_lsi += 1
 
             with  open(
-                    "flow_statistics_{0}/simple_flow_{1}.txt".format(
+                    "flow_server_side_code/flow_statistics_{0}/simple_flow_{1}.txt".format(
                         self._m_host_index,
                         self._m_index), "a") as file:
-                        file.write("Flow size: {0} bytes, fct: {1} us, overflows: {2}, flow counter: {3}\n".format(
-                    self._m_size, flow_cmpl_time,
+
+                file.write("Flow size: {0} bytes, fct: {1} us, overflows: {2}, flow counter: {3}\n".format( self._m_size, flow_cmpl_time,
                     self._m_msi, self._m_lsi))
 
 

@@ -7,9 +7,10 @@ def clean_up():
 
     clean_cmd = "sudo pkill -f --signal {0} -u root {1}"
 
-    topo_exit = "'python2.7 flow_test_topology.py'"
-    server_exit = "'python2.7 start_simple_server.py'"
-    flow_exit = "'python2.7 start_flow_generator.py'"
+    topo_exit = "'python2.7 rl_test_topology.py'"
+    server_exit = "'python2.7 flow_server_side_code/start_simple_server.py'"
+    flow_exit = "'python2.7 flow_server_side_code/start_traffic_eng.py'"
+    rl_exit = "'python2.7 rl_server_side_code/start_rl_server.py'"
     SIGTERM = "SIGTERM"
     SIGKILL = "SIGKILL"
 
@@ -20,6 +21,18 @@ def clean_up():
         kill_topo = clean_cmd.format(SIGTERM, topo_exit)
         subprocess.check_call(
                 args=kill_topo,
+                stdin=None, stdout=None,
+                stderr=None, shell=True)
+
+    except subprocess.CalledProcessError as exp:
+        print exp
+
+
+    try:
+        # kill them remainin  rl servers
+        kill_rl_servers = clean_cmd.format(SIGKILL, rl_exit)
+        subprocess.check_call(
+                args=kill_rl_servers,
                 stdin=None, stdout=None,
                 stderr=None, shell=True)
 
@@ -51,6 +64,16 @@ def clean_up():
     except subprocess.CalledProcessError as exp:
         print exp
 
+
+    try:
+        # clean up the mininet allocated resources
+        subprocess.check_call(
+                args="sudo mn --clean",
+                stdin=None, stdout=None,
+                stderr=None, shell=True)
+
+    except subprocess.CalledProcessError as exp:
+        print exp
 
 
 if __name__ == "__main__":

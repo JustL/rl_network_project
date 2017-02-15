@@ -32,18 +32,13 @@ def signal_term_handler(signal, frame):
     term_event = 0
 
 
-if __name__ == "__main__":
-
-    if len(sys.argv) < 2:
-        print "Please enter a public IP address for this rl server"
-        print "(e.g., 175.152.11.174)"
-        sys.exit(0)
+def main(rl_ip):
 
     # create and pass the deep reinforcement
     # learning model
     model = Deep_Policy_Grad_RL()
     # reinforcement server
-    rl_server = RL_Server(ip_address=sys.argv[1], model=model)
+    rl_server = RL_Server(ip_address=rl_ip, model=model)
 
     # create a queue so that the created server could be
     # passed to a new thread
@@ -68,4 +63,15 @@ if __name__ == "__main__":
 
     # wait until the thread terminates
     thread.join()
+
+
+if __name__ == "__main__":
+
+    if len(sys.argv) < 2:
+        print "Please enter a public IP address for this rl server"
+        print "e.g., 175.152.11.174"
+
+    else:
+        # start a new reinforcement server
+        main(sys.argv[1])
 

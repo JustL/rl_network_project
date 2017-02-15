@@ -7,7 +7,6 @@ import signal
 import time
 
 
-
 '''
 This file contains a very simple Topology for running simple
 flows.
@@ -99,6 +98,7 @@ def link_hosts(net, tor_switches, hosts):
     for s_idx in xrange(0, no_tors-1, 1):
         lower_bound = h_local*hosts_per_switch
         upper_bound = (h_local + 1)*hosts_per_switch
+
         for h_idx in xrange(lower_bound, upper_bound, 1):
             # connect a host to a tor
             net.addLink(hosts[h_idx], tor_switches[s_idx])
@@ -158,13 +158,13 @@ def simpleTest():
     net.start()
 
 
-    print "Dumping host connections"
+    print "\nDumping host connections"
     dumpNodeConnections(net.hosts)
 
-    print "Dumping switch connections"
+    print "\nDumping switch connections"
     dumpNodeConnections(net.switches)
 
-    print "Testing network connectivity"
+    print "\nTesting network connectivity"
     net.pingAll()
 
     print "\nGetting network information about the created hosts:\n"
@@ -175,6 +175,7 @@ def simpleTest():
 
     print "\n********************************************************************\n"
 
+
     # references to the processes
     server_pids = {}       # pids of servers
     generator_pids = {}    # pids of flow generators
@@ -184,12 +185,14 @@ def simpleTest():
     # create server commands and flow generator
     # commands that will be executed by each of
     # the cluster server
-    server_cmd = "nohup python2.7 start_simple_server.py {0} > result_server_{1}.out &"
+    server_cmd = "nohup python2.7 flow_server_side_code/start_simple_server.py {0} > result_server_{1}.out &"
 
-    generator_cmd_beg = "nohup python2.7 start_flow_generator.py {0} "
+
+    generator_cmd_beg = "nohup sudo python2.7 flow_server_side_code/start_traffic_eng.py {0} {1} {2} {3} {4} "
     generator_cmd_end = " > generator_result_{0}.out &"
 
-    rl_server_cmd  = "nohup python2.7 start_rl_server.py {0} > rl_server_{1}.out &"
+
+    rl_server_cmd  = "nohup python2.7 rl_server_side_code/start_rl_server.py {0} > centralised_rl_server_{1}.out &"
 
 
 
@@ -252,8 +255,21 @@ def simpleTest():
             remote_ips.append(" ") # separator
 
 
+        # retrieve this hosts interfaces and encode them
+        host_interfaces = []
+
+        for if_name, if_obj in host.nameToIntf.items():
+            # encode interfaces in the following
+            # pattern:
+            # "[interface name]:[interface ip]//"
+            host_interfaces.append(
+                    "{0}:{1}//".format(if_name, if_obj.IP()))
+
         # start the flow generator appplication on 'host'
-        exec_cmd = generator_cmd_beg.format(host.name) + "".join(remote_ips)  + generator_cmd_end.format(host.name)
+        exec_cmd = generator_cmd_beg.format(host.name,
+                "".join(host_interfaces), host.IP(),
+                rl_host.IP(),
+                "".join(remote_ips)) + generator_cmd_end.format(host.name)
 
         flow_id = host.cmd(exec_cmd)
 
@@ -313,7 +329,7 @@ def simpleTest():
     # all processes have been stopped
     # and killed
 
-    net.stop()
+    #net.stop()
 
 
 if __name__ == "__main__":

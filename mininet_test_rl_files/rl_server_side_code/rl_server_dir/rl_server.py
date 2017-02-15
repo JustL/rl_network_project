@@ -87,8 +87,10 @@ class RL_Server(object):
                          waiting/running flows (size, priority)
     '''
     __RL_SERVER_PORT_NUM = 32202 # global constant that should be used
-                               # to run an rl server
-    __MAX_WAIT_TASKS = 4     # max number of batches that a model can handle
+                                 # to run an rl server
+
+    __MAX_WAIT_TASKS = 4         # max number of batches
+                                 # that a model can handle
 
     def __init__(self, ip_address, model):
 

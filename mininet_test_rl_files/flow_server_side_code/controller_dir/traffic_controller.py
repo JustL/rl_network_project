@@ -2,8 +2,6 @@ from interface_dir.flow_controller import Flow_Controller
 from SimpleXMLRPCServer import SimpleXMLRPCServer
 import threading
 import Queue
-import socket
-from pyroute2 import IPRoute
 import subprocess
 
 
@@ -26,8 +24,8 @@ class Traffic_Controller(Flow_Controller):
     and handles all the requests coming from the remote RL machine.
     '''
 
-    def __init__(self, ip_address):
-        self._init_object(ip_address)
+    def __init__(self, h_interfaces, ip_address):
+        self._init_object(h_interfaces, ip_address)
 
 
     '''
@@ -37,29 +35,30 @@ class Traffic_Controller(Flow_Controller):
     Args:
         ip_address : IPv4 address and port that the server listens on
     '''
-    def _init_object(self, ip_address):
+    def _init_object(self, infcs, ip_address):
         self._m_server = SimpleXMLRPCServer(ip_address)
 
         self._m_msg_count = 0
-                                    # this value prevetns the
-                                    # kernel from update
-                                    # message overflow
-        self._m_exit = None         # term flag
+                                      # this value prevetns the
+                                      # kernel from update
+                                      # message overflow
+        self._m_exit = None           # term flag
 
-        self._m_upd_queue =  None   # stores updates
+        self._m_upd_queue =  None     # stores updates
 
-        self._m_rcv_thread = None   # reference to the thread that
-                                    # accepts updates
+        self._m_rcv_thread = None     # reference to the thread that
+                                      # accepts updates
 
-        self._m_upd_thread = None   # thread that performs updates
+        self._m_upd_thread = None     # thread that performs updates
 
-        self._m_infcs = {}          # for keeping track of IPv4 address :
-                                    # interface matching
+        self._m_infcs = infcs         # for keeping track of
+                                      # IPv4 address :
+                                      # interface matching
 
 
-        self._init_default_sch()    # for each interface set the
-                                    # selected scheduling qdisc
-                                    # as the default
+        self._init_default_sch()      # for each interface set the
+                                      # selected scheduling qdisc
+                                      # as the default
 
 
     '''
@@ -75,16 +74,8 @@ class Traffic_Controller(Flow_Controller):
     def _init_default_sch(self):
 
         # apply to all IPv4 interfaces
-        ip_cntrl = IPRoute()
-        interfaces = ip_cntrl.get_addr(family=socket.AF_INET)
 
-        ip_cntrl.close() # no need to use anymore
-
-        for ifc in interfaces:
-            # first of all add the interfaces to the ifc dictionary
-            if_label = ifc.get_attr("IFA_LABEL") # interface label
-            self._m_infcs[ifc.get_attr('IFA_ADDRESS')] = if_label
-
+        for if_label in self._m_infcs.keys():
 
             try:
                 subprocess.check_call(["tc", "qdisc", "del",

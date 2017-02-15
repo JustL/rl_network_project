@@ -157,6 +157,8 @@ class Simple_Flow_Server(object):
         except:
             raise
 
+
+        print "***** Simple_Flow_Server has been started *****"
         # run forever
         try:
             while not self._m_exit.is_set():
