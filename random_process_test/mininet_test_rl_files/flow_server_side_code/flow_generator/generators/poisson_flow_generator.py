@@ -36,9 +36,10 @@ class Poisson_Flow_Generator(Flow_Generator):
 
         self.m_table = []
         self.m_max_cdf = 1.0
-        self.m_min.cdf = 0.0
+        self.m_min_cdf = 0.0
         self.m_load    = network_load if network_load > 0.0 else 1.0
         self.m_avg     = -1.0
+
 
 
     '''
@@ -50,28 +51,37 @@ class Poisson_Flow_Generator(Flow_Generator):
         # open the given file and
         # read data from it.
 
-        with open(file=filename, mode="rt", newline="\n") as fd:
-            line = fd.readline() # read a line
-            vals = line.split(" ") # split val
-            if len(vals) % 2 != 0:
-                raise ValueError(
+
+        with open(name=filename, mode="r") as fd:
+            while 1:
+                line = fd.readline() # read a line
+
+                if line == None or line == "":
+                    break
+
+                line = line[0:-1:1]    # discard '\n'
+                vals = line.split(None)
+
+
+                if len(vals) % 2 != 0:
+                    raise ValueError(
                         "Input file has invalid input structure.")
 
-            for idx in xrange(0,len(vals),2):
-                # read two values a a time (value, cdf)
-                value = float(vals[idx])
-                cdf   = float(vals[idx + 1])
+                for idx in xrange(0,len(vals),2):
+                    # read two values a a time (value, cdf)
+                    value = float(vals[idx])
+                    cdf   = float(vals[idx + 1])
 
 
-                self.m_table.append(CDF_Entry(
-                    value, cdf))
+                    self.m_table.append(CDF_Entry(
+                        value, cdf))
 
-                # update some default values from the read values
-                if cdf < self.m_min_cdf:
-                    self.m_min_cdf = cdf
+                    # update some default values from the read values
+                    if cdf < self.m_min_cdf:
+                        self.m_min_cdf = cdf
 
-                if cdf > self.m_max_cdf:
-                    self.m_max_cdf = cdf
+                    if cdf > self.m_max_cdf:
+                        self.m_max_cdf = cdf
 
 
     '''
@@ -80,7 +90,7 @@ class Poisson_Flow_Generator(Flow_Generator):
     def print_cdf(self):
 
         for entry in self.m_table:
-            print "%.2f %.2f\n" % (entry.value, entry.cdf)
+            print "%.2f %.2f\n" % (entry.m_value, entry.m_cdf)
 
 
 
@@ -96,15 +106,15 @@ class Poisson_Flow_Generator(Flow_Generator):
 
         avg = 0.0
 
-        avg += (self.m_table[0].value / 2) * self.m_table[0].cdf
+        avg += (self.m_table[0].m_value / 2) * self.m_table[0].m_cdf
 
         # loop though all table entries and
         # return compute avg (taken from Wi Bai's code)
         for idx in xrange(1, len(self.m_table), 1):
-            value = (self.m_table[idx].value
-                    + self.m_table[idx-1].value)/2
+            value = (self.m_table[idx].m_value
+                    + self.m_table[idx-1].m_value)/2
 
-            prob = self.m_table.cdf[idx] - self.m_table.cdf[idx-1]
+            prob = self.m_table[idx].m_cdf - self.m_table[idx-1].m_cdf
 
             avg += (value * prob)
 
@@ -129,7 +139,7 @@ class Poisson_Flow_Generator(Flow_Generator):
     Helper function for generating a rnadom vlaue based on the
     underlying CDF distribution.
     '''
-    def _rand_range(min_cdf, max_cdf):
+    def _rand_range(self, min_cdf, max_cdf):
         return (min_cdf
                 + random.randint(0, RAND_MAX)
                 * (max_cdf - min_cdf) / RAND_MAX)
@@ -149,23 +159,23 @@ class Poisson_Flow_Generator(Flow_Generator):
         x = self._rand_range(self.m_min_cdf, self.m_max_cdf)
 
         # check for the first item
-        if x <= self.m_table[0].cdf:
+        if x <= self.m_table[0].m_cdf:
             return self._interpolate(x, 0, 0,
-                    self.m_table[0].cdf,
-                    self.m_table[0].value)
+                    self.m_table[0].m_cdf,
+                    self.m_table[0].m_value)
 
 
         for idx in xrange(1, len(self.m_table), 1):
 
-            if x <= self.m_table[idx].cdf:
+            if x <= self.m_table[idx].m_cdf:
                 return self._interpolate(x,
-                        self.m_table[idx-1].cdf,
-                        self.m_table[idx-1].value,
-                        self.m_table[idx].cdf,
-                        self._m_table[idx].value)
+                        self.m_table[idx-1].m_cdf,
+                        self.m_table[idx-1].m_value,
+                        self.m_table[idx].m_cdf,
+                        self.m_table[idx].m_value)
 
         # by default, return the last value
-        return self.m_table[-1].value
+        return self.m_table[-1].m_value
 
 
     '''

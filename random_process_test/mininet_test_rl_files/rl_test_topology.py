@@ -4,6 +4,7 @@ from mininet.log import setLogLevel
 
 
 import signal
+import sys
 import time
 
 
@@ -116,7 +117,7 @@ def link_hosts(net, tor_switches, hosts):
 
 
 
-def simpleTest():
+def simpleTest(cdf_file):
 
     # first register this program for
     # handling the SIGTERM flag
@@ -263,13 +264,14 @@ def simpleTest():
             # pattern:
             # "[interface name]:[interface ip]//"
             host_interfaces.append(
-                    "{0}:{1}//".format(if_name, if_obj.IP()))
+                    "{0}::{1}//".format(if_name, if_obj.IP()))
 
         # start the flow generator appplication on 'host'
-        exec_cmd = generator_cmd_beg.format(host.name,
-                "".join(host_interfaces), host.IP(),
-                rl_host.IP(),
-                "".join(remote_ips)) + generator_cmd_end.format(host.name)
+        exec_cmd = generator_cmd_beg.format(
+             cdf_file, host.name,
+             "".join(host_interfaces), rl_host.IP(),
+             "".join(remote_ips)) + generator_cmd_end.format(host.name)
+
 
         flow_id = host.cmd(exec_cmd)
 
@@ -333,8 +335,14 @@ def simpleTest():
 
 
 if __name__ == "__main__":
-    # Tell mininet to print useful information
-    setLogLevel("info")
-    simpleTest()
+
+    if len(sys.argv) != 2:
+        print "Need more arguments."
+        print "rl_test_topology.py [cdf_file_name]"
+
+    else:
+        # Tell mininet to print useful information
+        setLogLevel("info")
+        simpleTest(sys.argv[1])
 
 

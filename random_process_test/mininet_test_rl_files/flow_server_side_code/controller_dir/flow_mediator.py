@@ -25,7 +25,7 @@ import time
 class Flow_Mediator(object):
 
     __SLEEP_TIME = 20           # value for update period in seconds
-    __NUM_OF_STATIC_FLOWS = 2   # number of flows on this server
+    __NUM_OF_STATIC_FLOWS = 3   # number of flows on this server
     __MAX_QUEUE_SIZE      = 20  # size of completed flows
     __FLOW_RATES =      [100000, 200000] # flow rate bit/s
     __FLOW_PRIORITIES = [0, 2, 4, 6]     # follws Linux
@@ -50,7 +50,7 @@ class Flow_Mediator(object):
                 lock=multiprocessing.Lock())
 
         self._m_cm_flows = multiprocessing.Queue(
-            Flow_Mediator.__MAX_QUEUE_SIZE)           # the structure that
+            Flow_Mediator.__MAX_QUEUE_SIZE)          # the structure that
                                                      # stores completed
                                                      # flows (maxsize is a
                                                      # hard-coded vale
@@ -59,6 +59,7 @@ class Flow_Mediator(object):
                                                      # to rl algm.
 
         self._m_processes = []
+
 
         self._init_flows(host_index, rl_server,
                 ip_addresses, gen_factory, cdf_file)
@@ -130,8 +131,10 @@ class Flow_Mediator(object):
 
         # created flows for the firs remote servers
         # creating flows for the last server
-        for _ in xrange(0, last_host_flows, 1):
-            self._m_processes.append( Flow_Handler(
+
+        try:
+            for _ in xrange(0, last_host_flows, 1):
+                self._m_processes.append( Flow_Handler(
                 ip_address=ip_addresses[-1],
                 cmp_queue=self._m_cm_flows,
                 inc_arr=self._m_arr,
@@ -143,10 +146,11 @@ class Flow_Mediator(object):
                 flow_priority=pr_generator.next(),
                 host_index=h_index))
 
-            self._m_processes[-1].start() # start a flow
-            m_index += 1                  # update the index
 
-
+                self._m_processes[-1].start() # start a flow
+                m_index += 1                  # update the index
+        except Exception as exp:
+            print exp
 
     '''
     A helper to generate priorities for the flows
@@ -253,7 +257,7 @@ class Flow_Mediator(object):
         print "Stopping my controller"
         self._m_controller.stop_controller()
 
-        print "Controller has bee stopped"
+        print "Controller has been stopped"
         # Before stopping the Flow_Mediator,
         # notify the remote rl server about it.
         try:

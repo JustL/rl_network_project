@@ -59,6 +59,7 @@ class Flow_Handler(Process):
         super(Flow_Handler, self).__init__()
 
 
+
         self._init_io(flow_gen, cdf_file,
                 host_index, flow_index)      # initialize ong related
                                              # to io
@@ -109,8 +110,7 @@ class Flow_Handler(Process):
         with open("flow_server_side_code/flow_statistics_{0}/simple_flow_{1}.txt".format(host_index, f_idx),
                 "a") as fd:
             # write titles of the data columns
-            fd.write("FLOW_SIZE_bytes,FCT_us")
-
+            fd.write("FLOW_SIZE_bytes,FCT_us\n")
 
 
     def run(self):
@@ -255,7 +255,7 @@ class Flow_Handler(Process):
     '''
     def _flow_data(self, sockfd, libc):
 
-        CHUNK_SIZE = 2048
+        CHUNK_SIZE = 1024
         chunk = (ctypes.c_char*CHUNK_SIZE)()    # a buffer to store
                                                 # received data
 
@@ -265,8 +265,8 @@ class Flow_Handler(Process):
         TERM_MSG[0::1] = PROTOCOL_SIGNAL[0]
 
         # initialize some variables for receiving a flow
-        RECV_SIGN = PROTOCOL_SIGNAL[1]
-        RECV_LEN  = len(PROTOCOL_SIGNAL[1]) # for initializing arrays
+        RECV_MSG = PROTOCOL_SIGNAL[1]
+
 
 
         '''
@@ -277,14 +277,15 @@ class Flow_Handler(Process):
         random period of time generetated by generator.
         '''
         while 1:
-            flow_size = int(self._m_gen.gen_random_cdf())
+
+            flow_size = int(self._m_gen.gen_random_cdf()) % 100
             self._register_for_flow(flow_size) # starting a new flow
             data = (ctypes.c_char*flow_size)()
-            data[0::1] = "0"*flow_size
+            data = "o"*flow_size
+
 
             # initialize some variables for sending a flow
             total_sent = 0
-            recv_data = "0"*RECV_LEN
 
 
             flow_start = micros() # get the current time for timestamping
@@ -310,6 +311,7 @@ class Flow_Handler(Process):
             # add the terminal sequence
             total_sent = 0
 
+
             while total_sent < MSG_LEN:
                 sent_bytes = libc.send(sockfd, TERM_MSG[total_sent::1],
                         MSG_LEN, 0)
@@ -326,9 +328,13 @@ class Flow_Handler(Process):
 
 
             # wait for response from the remote server
-            while recv_data != RECV_SIGN:   # loop until the terminal
-                                          # message has been received
-                read_bytes = libc.recv(sockfd, chunk, CHUNK_SIZE, 0)
+            wait_reply = True # flag for reply
+
+            while wait_reply:   # loop until the terminal
+                                # message has been received
+
+                read_bytes = libc.recv(sockfd,
+                        ctypes.byref(chunk), CHUNK_SIZE, 0)
 
                 if read_bytes <= 0:
                     print "Socket connection broken or closed"
@@ -338,13 +344,11 @@ class Flow_Handler(Process):
                         self._m_close = False
                     return
 
-                # update the received data
-                if read_bytes >= RECV_LEN:
-                    recv_data = chunk[read_bytes-RECV_LEN:read_bytes:1]
-
-                else:
-                    start_idx = RECV_LEN - read_bytes
-                    recv_data = chunk[0:read_bytes:1] + recv_data[start_idx::1]
+                # check for received data
+                for idx in xrange(0, read_bytes, 1):
+                    if chunk[idx] == RECV_MSG:
+                        wait_reply = False
+                        break
 
 
             flow_end = micros() # end of the flow

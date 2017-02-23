@@ -18,6 +18,7 @@ import Queue
 from start_simple_server import SERVER_PORT
 from controller_dir.flow_mediator import Flow_Mediator
 
+from flow_generator.factories.poisson_flow_generator_factory import Poisson_Generator_Factory
 
 # global flags that informs
 # the program when to terminate
@@ -44,7 +45,7 @@ def signal_term_handler(signal, frame):
 
 
 
-def start_generator(h_index, ip_addrs):
+def start_generator(cdf_file, h_index, ip_addrs):
 
 
     # the port number that a simple flow server listen on
@@ -58,13 +59,15 @@ def start_generator(h_index, ip_addrs):
 
     # below code creates and initializes a Flow_Mediator for
     # generating workflows
+    factory = Poisson_Generator_Factory()
 
     mediator = None
 
     # might raise an exception
     try:
         mediator = Flow_Mediator(host_index = h_index,
-                ip_addresses=addresses)
+                ip_addresses=addresses,
+                dist_file=cdf_file, gen_factory=factory)
 
     except:
         print "Flow Mediator could not be instantiated"
@@ -101,16 +104,17 @@ if __name__ == "__main__":
 
     # first step is to check if some server addresses have
     # been passed for running
-    if len(sys.argv) < 3:
+    if len(sys.argv) < 4:
         print "Please pass more arguments.",
-        print "There must be a unique index that identifies"
-        print "this machine"
+        print "There must be a cdf file for generating flows,",
+        print "a unique index that identifies",
+        print "this machine",
         print "Also, there must be at least one public ip address:"
         print "--- Remote server address(es)."
-        print "e.g., h1  143.125.15.16"
+        print "e.g., cdf.txt h1  143.125.15.16"
 
     else: # run a new generator
 
-        start_generator(sys.argv[1], sys.argv[2::1])
+        start_generator(sys.argv[1], sys.argv[2], sys.argv[3::1])
 
 

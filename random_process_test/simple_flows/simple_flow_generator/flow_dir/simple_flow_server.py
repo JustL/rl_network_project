@@ -24,7 +24,6 @@ import ctypes # for using native C data structures
 import sys
 
 
-
 '''
 This function is used by a separate process to
 run a connection. Since the function runs in a
@@ -32,7 +31,6 @@ separate process, the libc has to be re;oaded again
 '''
 def sock_proc(client):
 
-    print "A new connection has been started"
     # try to load the standard C library and the Linux sys calls
     libc = None
     try:
@@ -40,6 +38,8 @@ def sock_proc(client):
     except:
         return   # terminate this process
 
+
+    print "*** A new connection has been successfully initialized ***"
     # have loaded the C lib and sys calls, also have a ref to a socket
     # send all replies with a high priority (even if it is not supported)
     # don't check for the status number
@@ -55,26 +55,23 @@ def sock_proc(client):
     REPLY_MSG         = (ctypes.c_char*REPLY_LEN)()
     REPLY_MSG[0::1]   = PROTOCOL_SIGNAL[1]          # terminal sequence
 
-    RECV_LEN          = len(PROTOCOL_SIGNAL[0])     # length of
-                                                    # client's term
-                                                    # signal
 
     RECV_MSG          = PROTOCOL_SIGNAL[0]          # terminal message
-    MAX_READ          = 2048                        # at most that many
+    MAX_READ          = 4096                        # at most that many
                                                     # bytes to read
                                                     # in one socket call
 
+    chunk = (ctypes.c_char*MAX_READ) ()             # buffer for reading
 
 
+    print "*** Simple_Flow_Server: starting to handle the flow ***"
     while 1: # run forever
-        recv_data = "0"*RECV_LEN # where received data is stored
-        chunk = (ctypes.c_char*MAX_READ)()
 
 
-        while recv_data != RECV_MSG:
+        while 1:
             # since the teminal sequence must be at the end of the flow
             # check only the last items of the received data
-            read_bytes = libc.recv(client, chunk, MAX_READ, 0)
+            read_bytes = libc.recv(client, ctypes.byref(chunk), MAX_READ, 0)
 
             if read_bytes <= 0:
                 print "Socket connection broken or closed"
@@ -82,18 +79,14 @@ def sock_proc(client):
                 libc.close(client) # close socket and terminate
                 return
 
-            # check update received data
-            if read_bytes >= RECV_LEN:
-                # read last bytes for checking
-                recv_data = chunk[read_bytes-RECV_LEN:read_bytes:1]
 
-            else: # check the previous data combined with the new data
-                start_idx = RECV_LEN - read_bytes
-                recv_data = chunk[0:read_bytes:1] + recv_data[start_idx::1]
+            if chunk[read_bytes-1] == RECV_MSG:
+                break
 
 
         # the below code just sends a reply to the client and
         # waits for a new message
+
 
         total_sent = 0
         while total_sent < REPLY_LEN:
@@ -138,7 +131,7 @@ class Simple_Flow_Server(object):
         self._m_exit  = threading.Event() # a flag that tells the server to
                                          # keep looping
         self._m_lock = threading.Lock()  # a lock that protects data
-                                         # consistency within this program
+                                         # consistency withing this program
         self._m_sockfd = None            # a socket file descriptor
 
     '''
@@ -147,10 +140,6 @@ class Simple_Flow_Server(object):
     connections and handles them (passes to a new process/thread).
     '''
     def start_server(self):
-
-        print "Simple_Flow_Server: Starting the server"
-        print "Server's address:", self._m_ip
-
         # this method onyl works on Linux machines
         # check for the platform
         if not sys.platform.startswith("linux"):
@@ -158,11 +147,13 @@ class Simple_Flow_Server(object):
            return
 
         # construct a Linux socket
+        try:
+            (sockfd, libc) = self._init_linux_rec()
+        except:
+            raise
 
-        (sockfd, libc) = self._init_linux_rec()
-        if sockfd < 0:
-            return
 
+        print "***** Simple_Flow_Server has been started *****"
         # run forever
         try:
             while not self._m_exit.is_set():
@@ -199,8 +190,7 @@ class Simple_Flow_Server(object):
     '''
     def stop_server(self):
 
-        # this method can be called from a few threads
-        # so locking is needed
+        # this method can be called from a few threads so locking is needed
         with self._m_lock:
             # load  a new referece to the Linux system calls
             # since the previous one might be used by another thread
@@ -208,21 +198,17 @@ class Simple_Flow_Server(object):
             try:
                 libc = ctypes.CDLL("libc.so.6", use_errno=True)
             except:
-                print "'libc.so.6' could not be loaded"
-                return
+                raise RuntimeError("'libc.so.6' could not be loaded")
 
             self._m_exit.set()  # stop looping
             # close all connections first
-
             if self._m_conns:
                 for conn in self._m_conns:
                     try:
                         libc.shutdown(conn, SHUT_RDWR)
                         libc.close(conn)
-                    except: # an exception might
-                            # be raised since closing
-                            # sockets that are handled
-                            # by other processes
+                    except: # an exception might be raised since closing
+                        # sockets that are handled by other processes
                         pass
 
             # stopp all the started processes
@@ -230,33 +216,27 @@ class Simple_Flow_Server(object):
                 for prc in self._m_procs:
                     if prc.is_alive():
                         prc.terminate()
-
-
-                for prc in self._m_procs:
-                    prc.join()    # wait until the process stops
+                        prc.join() # wait until the process stops
 
 
             # processes and sockets have been handled
             self._m_conns = None
             self._m_procs = None
+            libc.close(self._m_sockfd, SHUT_RDWR)
+            libc.close(self._m_sockfd) # close my own socket
 
-            if self._m_sockfd != None:
-                libc.close(self._m_sockfd, SHUT_RDWR)
-                libc.close(self._m_sockfd) # close my own socket
+            # send some data to my own socket to terminate
+            # .accept system call
+            socket = None
 
-                # send some data to my own socket to terminate
-                # .accept system call
-                socket = None
-
-                try:
-                    socket = Socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
-                    socket.connect(self._m_ip) # this should
-                                                # throw an
-                                                # exception
-                except:
-                    # exception should be thrown, so handle it
-                    if socket:
-                        socket.close()
+            try:
+                socket = Socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
+                socket.connect(self._m_ip) # this should throw an
+                                           # exception
+            except:
+                # exception should be thrown, so handle it
+                if socket:
+                    socket.close()
 
 
 
@@ -271,15 +251,13 @@ class Simple_Flow_Server(object):
         try:
             libc = ctypes.CDLL("libc.so.6", use_errno=True)
         except:
-             print "'libc.so' could not be loaded"
-             return (-1, -1)
+             raise RuntimeError("'libc.so could not be loaded'")
 
         # library and system calls have been loaded, use them to create
         # a TCP socket
         sockfd = libc.socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
         if sockfd < 0:
-           print "System error: cannot create a new socket"
-           return (-1, -1)
+           raise RuntimeError("System error: cannot create a new socket")
 
         m_addr = Sockaddr_In() # sock addr structure
         libc.memset(ctypes.byref(m_addr), 0, ctypes.sizeof(m_addr))
@@ -289,22 +267,15 @@ class Simple_Flow_Server(object):
         m_addr.sin_addr.s_addr = libc.inet_addr(self._m_ip[0])
         m_addr.sin_port = libc.htons(self._m_ip[1])
 
-        print "Simple_Flow_Server m_addr:"
-        print "sin_family:", m_addr.sin_family
-        print "sin_addr.s_addr:", m_addr.sin_addr.s_addr
-        print "sin_port:", m_addr.sin_port
-
         # address structure and a socket are built, bind and start listening
         if libc.bind(sockfd, ctypes.byref(m_addr), ctypes.sizeof(m_addr)) < 0:
-            print "System error: cannot bind"
-            return (-1, -1)
+            raise RuntimeError("System error: cannot bind")
 
         if libc.listen(sockfd, Simple_Flow_Server.__LISTEN_QUEUE) < 0:
-            print"System error: cannot start listening"
-            return (-1, -1)
+            raise RuntimeError("System error: cannot start listening")
 
         # done initializing the required Linux resources
-        self._m_sockfd = sockfd  # for closing this socket later
+        self._m_sockfd = sockfd  # for clsosing this socket later
         return (sockfd, libc)
 
 

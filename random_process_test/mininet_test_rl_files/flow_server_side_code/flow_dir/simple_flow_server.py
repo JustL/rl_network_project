@@ -38,6 +38,8 @@ def sock_proc(client):
     except:
         return   # terminate this process
 
+
+    print "*** A new connection has been successfully initialized ***"
     # have loaded the C lib and sys calls, also have a ref to a socket
     # send all replies with a high priority (even if it is not supported)
     # don't check for the status number
@@ -53,26 +55,23 @@ def sock_proc(client):
     REPLY_MSG         = (ctypes.c_char*REPLY_LEN)()
     REPLY_MSG[0::1]   = PROTOCOL_SIGNAL[1]          # terminal sequence
 
-    RECV_LEN          = len(PROTOCOL_SIGNAL[0])     # length of
-                                                    # client's term
-                                                    # signal
 
     RECV_MSG          = PROTOCOL_SIGNAL[0]          # terminal message
-    MAX_READ          = 2048                        # at most that many
+    MAX_READ          = 4096                        # at most that many
                                                     # bytes to read
                                                     # in one socket call
 
+    chunk = (ctypes.c_char*MAX_READ) ()             # buffer for reading
 
 
+    print "*** Simple_Flow_Server: starting to handle the flow ***"
     while 1: # run forever
-        recv_data = "0"*RECV_LEN # where received data is stored
-        chunk = (ctypes.c_char*MAX_READ)()
 
 
-        while recv_data != RECV_MSG:
+        while 1:
             # since the teminal sequence must be at the end of the flow
             # check only the last items of the received data
-            read_bytes = libc.recv(client, chunk, MAX_READ, 0)
+            read_bytes = libc.recv(client, ctypes.byref(chunk), MAX_READ, 0)
 
             if read_bytes <= 0:
                 print "Socket connection broken or closed"
@@ -80,18 +79,14 @@ def sock_proc(client):
                 libc.close(client) # close socket and terminate
                 return
 
-            # check update received data
-            if read_bytes >= RECV_LEN:
-                # read last bytes for checking
-                recv_data = chunk[read_bytes-RECV_LEN:read_bytes:1]
 
-            else: # check the previous data combined with the new data
-                start_idx = RECV_LEN - read_bytes
-                recv_data = chunk[0:read_bytes:1] + recv_data[start_idx::1]
+            if chunk[read_bytes-1] == RECV_MSG:
+                break
 
 
         # the below code just sends a reply to the client and
         # waits for a new message
+
 
         total_sent = 0
         while total_sent < REPLY_LEN:

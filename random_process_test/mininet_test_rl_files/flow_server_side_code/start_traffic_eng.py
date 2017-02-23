@@ -21,6 +21,8 @@ from flow_dir.flow_impl import RL_Wait_Flow
 from controller_dir.traffic_controller import Traffic_Controller
 from controller_dir.flow_mediator import Flow_Mediator
 
+from flow_generator.factories.poisson_flow_generator_factory import Poisson_Generator_Factory
+
 
 # global flags that informs
 # the program when to terminate
@@ -50,11 +52,15 @@ def _convert_into_dict(enc_string):
 
     result_dict = {}
 
-    sep_items = "//"    # extracts items of a dict
-    sep_key_val = ":"   # separates the key and the value
+    sep_items = "//"     # extracts items of a dict
+    sep_key_val = "::"   # separates the key and the value
+
+    if enc_string[-len(sep_items)::1] == sep_items:
+        enc_string = enc_string[0:-len(sep_items):1] # discard last
+                                                     # separator
 
     items = enc_string.split(sep_items)
-    items = items[0:-1:1] # discard the last item
+
 
     # loop through items and
     # put them in the dictionary
@@ -71,7 +77,9 @@ def _convert_into_dict(enc_string):
 
 
 
-def main(host, host_infcs, local_ip, rl_server_ip, remote_ips):
+def main(dist_file, host, host_infcs,
+        rl_server_ip, remote_ips):
+
 
     RL_SERVER_PORT = 32202
     # the reinforcement server must
@@ -92,6 +100,19 @@ def main(host, host_infcs, local_ip, rl_server_ip, remote_ips):
     # below code creates and initializes a Flow_Mediator for
     # generating workflows
 
+    local_ip = None
+
+    for ip_val in  host_infcs.values():
+        local_ip = ip_val
+        break
+
+    try:
+        factory = Poisson_Generator_Factory()
+        factory.create_generator()
+    except Exception as exp:
+        print exp
+        return
+
     wait_flow_type = RL_Wait_Flow()  # determines a C array's type
     con = Traffic_Controller(h_interfaces=host_infcs,
             ip_address=(local_ip,
@@ -104,10 +125,12 @@ def main(host, host_infcs, local_ip, rl_server_ip, remote_ips):
                       ip_addresses=addresses,
                       controller=con,
                       wf_type=wait_flow_type,
-                      host_index=host)
+                      host_index=host,
+                      gen_factory=factory,
+                      cdf_file=dist_file)
 
     except:
-        print "Flow Medaitor could not be instantiated"
+        print "Flow Mediator could not be instantiated"
         return
 
 
@@ -142,21 +165,23 @@ if __name__ == "__main__":
     # been passed for running
     if len(sys.argv) < 6:
         print "Please pass more arguments.",
-        print "There must be a host index and"
-        print "at least three public ip addresses:"
-        print "--- host index withing mininet"
-        print "--- all host interfaces for mininet;"
-        print "--- IPv4 of this server's interface;"
+        print "There must a file that stores",
+        print "CDF of some distribution,",
+        print "a host index within mininet",
+        print "all host interfaces within mininet"
+        print "and at least two public ip addresses:"
         print "--- Reinforcement learnig server address;"
         print "--- Remote server address(es)."
-        print "e.g. h1 eth0:10.0.0.1//eth1:10.0.0.2// 175.2.11.123",
+        print "e.g. start_traffinc_eng.py cdf_file.txt h1",
+        print "eth0::10.0.0.1//eth1::10.0.0.2//",
         print "143.125.15.13  143.125.15.16  ..."
 
     else:
 
+
         # preprocess interfaces
-        interfaces = _convert_into_dict(sys.argv[2])
+        interfaces = _convert_into_dict(sys.argv[3])
 
         # start running a flow generator
-        main(sys.argv[1], interfaces, sys.argv[3], sys.argv[4], sys.argv[5::1])
+        main(sys.argv[1], sys.argv[2], interfaces, sys.argv[4], sys.argv[5::1])
 

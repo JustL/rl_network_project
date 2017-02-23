@@ -1,10 +1,12 @@
 from mininet.net import Mininet
 from mininet.util import dumpNodeConnections
 from mininet.log import setLogLevel
+from mininet.node import OVSController
 
 
 import signal
 import time
+import sys
 
 
 
@@ -27,7 +29,7 @@ Topology:
 '''
 
 CONTROLLER_PORT = 13458
-NUM_OF_HOSTS = 2
+NUM_OF_HOSTS = 4
 term_signal = 1    # for terminating this process
 
 
@@ -116,7 +118,7 @@ def link_hosts(net, tor_switches, hosts):
 
 
 
-def simpleTest():
+def simpleTest(cdf_file):
 
     # first register this program for
     # handling the SIGTERM flag
@@ -145,7 +147,9 @@ def simpleTest():
     spines.append(net.addSwitch("spine_1"))
 
     # add a controller
-    net.addController(name="c0", port=CONTROLLER_PORT)
+    net.addController(name="c0",
+        controller=OVSController,
+        port=CONTROLLER_PORT)
 
 
     # interconnect switches first
@@ -158,13 +162,13 @@ def simpleTest():
     net.start()
 
 
-    print "Dumping host connections"
+    print "\nDumping host connections"
     dumpNodeConnections(net.hosts)
 
-    print "Dumping switch connections"
+    print "\nDumping switch connections"
     dumpNodeConnections(net.switches)
 
-    print "Testing network connectivity"
+    print "\nTesting network connectivity"
     net.pingAll()
 
     print "\nGetting network information about the created hosts:\n"
@@ -185,7 +189,7 @@ def simpleTest():
     # the cluster server
     server_cmd = "nohup python2.7 start_simple_server.py {0} > result_server_{1}.out &"
 
-    generator_cmd_beg = "nohup python2.7 start_flow_generator.py {0} "
+    generator_cmd_beg = "nohup python2.7 start_flow_generator.py {0} {1} "
     generator_cmd_end = " > generator_result_{0}.out &"
 
 
@@ -225,7 +229,7 @@ def simpleTest():
 
 
         # start the flow generator appplication on 'host'
-        exec_cmd = generator_cmd_beg.format(host.name) + "".join(remote_ips)  + generator_cmd_end.format(host.name)
+        exec_cmd = generator_cmd_beg.format(cdf_file, host.name) + "".join(remote_ips)  + generator_cmd_end.format(host.name)
 
         flow_id = host.cmd(exec_cmd)
 
@@ -280,8 +284,15 @@ def simpleTest():
 
 
 if __name__ == "__main__":
-    # Tell mininet to print useful information
-    setLogLevel("info")
-    simpleTest()
+
+    if len(sys.argv) != 2:
+        print "Invalid input"
+        print "Valid input should look like:"
+        print "flow_test_topology.py [cdf_file]"
+
+    else:
+        # Tell mininet to print useful information
+        setLogLevel("info")
+        simpleTest(sys.argv[1])
 
 
