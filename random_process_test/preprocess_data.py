@@ -8,12 +8,13 @@ import sys
 import multiprocessing
 
 
-INFO_MSG = "\nUsage: {0} -dir_path path_value [-perc int_value]\n"
+INFO_MSG = "\nUsage: {0} -dir_path path_value [-perc int_value]\n\npath_value -- relative or absolute path to the directory that stores files;\n\nint_value -- integer that determines what percentage of the  data in a file is only processed (percentage measured from the end of a file)."
 
 
 # the below frame is used by worker processes to
 # store read data into a temp file.
 TEXT_TITLE_FRAME = "temp_stage_{0}_prc_{1}.txt"
+FINAL_FILE_TITLE = "processed_data_file.csv"
 
 
 MAX_PERCENT = 100
@@ -154,10 +155,24 @@ def _process_data(path_to_dir, percent=MAX_PERCENT):
         return
 
 
+    # two cases to handle
+    # Case 1: total_files > CPU_COUNT
+    # Case 2: total_files <= CPU_COUNT
+
+    # get the number of processes to create
+    PROCESS_NUM = CPU_COUNT # initiailize to CPU count
+
+    # for keeping track of the final temp file
+    final_temp_prc_id = 0
+    final_temp_stage  = 0
+
+    if total_files <= CPU_COUNT:
+        PROCESS_NUM = total_files / 2 if total_files > 3 else 1
+
 
     # Step 1: Create a Pool of Python processes
     prc_pool = multiprocessing.Pool(
-        processes=CPU_COUNT)
+            processes=PROCESS_NUM)
 
 
     # Step 2: Handle original text files since the first line
@@ -165,32 +180,35 @@ def _process_data(path_to_dir, percent=MAX_PERCENT):
     # is applied to the original files.
 
     # subdivide tasks into smaller subtasks
-    files_per_prc = total_files / CPU_COUNT
+    files_per_prc = total_files / PROCESS_NUM
 
 
-    results = [None]*CPU_COUNT # stores results
+    results = [None]*PROCESS_NUM # stores results
 
 
     # use available processes to subdivide the original files
     global_index = 0
 
-    for prc_idx in xrange(0, CPU_COUNT - 1, 1):
+    for prc_idx in xrange(0, PROCESS_NUM - 1, 1):
         results[prc_idx] = prc_pool.apply_async(
-                _handle_originals,
-                (path_to_dir,
-                data_files[global_index:global_index+files_per_prc:1],
+            _handle_originals,
+            (path_to_dir,
+            data_files[global_index:global_index+files_per_prc:1],
                 1, prc_idx, percent))
 
         global_index += files_per_prc
 
 
     # last process handles the rest
-    results[CPU_COUNT - 1] = prc_pool.apply_async(_handle_originals,
-            (path_to_dir,
-            data_files[global_index::1],
-            1, CPU_COUNT-1, percent))
+    results[PROCESS_NUM - 1] = prc_pool.apply_async(_handle_originals,
+        (path_to_dir,
+        data_files[global_index::1],
+        1, PROCESS_NUM-1, percent))
 
 
+    # update final constant
+    final_temp_prc_id = PROCESS_NUM - 1
+    final_temp_stage = 1
 
     # wait for all processes to complete
     for prc_state in results:
@@ -199,14 +217,14 @@ def _process_data(path_to_dir, percent=MAX_PERCENT):
 
     # original files completed
     # now only merging left
-    left_files = CPU_COUNT # current number of intermediate files
-    stage_value = 2        # first stage was finished above
+    left_files = PROCESS_NUM # current number of intermediate files
+    stage_value = 2          # first stage was finished above
 
 
     while left_files != 1: # keep merging until work only for one
                            # process is left
 
-        num_cpus = left_files / 2 # cal num of cpus to use
+        num_cpus = left_files / 2 # calculate num of cpus to use
 
         files_per_proc = left_files / num_cpus
 
@@ -215,20 +233,23 @@ def _process_data(path_to_dir, percent=MAX_PERCENT):
         # similar to the above code
         for prc_idx in xrange(0, num_cpus - 1, 1):
             results[prc_idx] = prc_pool.apply_async(
-                    _handle_temps, (path_to_dir,
-                    (global_index, global_index + files_per_proc - 1),
-                    stage_value, prc_idx))
+                _handle_temps, (path_to_dir,
+                (global_index, global_index + files_per_proc - 1),
+                stage_value, prc_idx))
 
             global_index += files_per_proc
 
 
         # for the last process, deal with the remaining files
         results[num_cpus-1] = prc_pool.apply_async(
-                _handle_temps, (path_to_dir,
-                (global_index, left_files - 1),
-                stage_value, num_cpus-1))
+            _handle_temps, (path_to_dir,
+            (global_index, left_files - 1),
+            stage_value, num_cpus-1))
 
         # update all constants
+        final_temp_prc_id = num_cpus - 1
+        final_temp_stage = stage_value
+
         stage_value += 1 # increment the stage
         left_files = num_cpus # new value of remaining vals
 
@@ -246,6 +267,11 @@ def _process_data(path_to_dir, percent=MAX_PERCENT):
 
     prc_pool.close() # close any incoming tasks
     prc_pool.join()  # wait when the pool terminates
+
+    # rename the final file
+    os.rename(os.path.join(path_to_dir,
+        TEXT_TITLE_FRAME.format(final_temp_stage, final_temp_prc_id)),
+        os.path.join(path_to_dir, FINAL_FILE_TITLE))
 
 
 def _process_input(inputs):
