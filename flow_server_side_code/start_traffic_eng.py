@@ -22,6 +22,8 @@ from flow_dir.flow_impl import RL_Wait_Flow
 from controller_dir.traffic_controller import Traffic_Controller
 from controller_dir.flow_mediator import Flow_Mediator
 
+from flow_generator import Poisson_Generator_Factory
+
 
 # global flags that informs
 # the program when to terminate
@@ -43,26 +45,14 @@ def signal_term_handler(signal, frame):
 
 
 
-
-if __name__ == "__main__":
-    # first step is to check if some server addresses have
-    # been passed for running
-    if len(sys.argv) < 4:
-        print "Please pass more arguments.",
-        print "There must be at least three public ip addresses:"
-        print "--- IPv4 of this server's interface;"
-        print "--- Reinforcement learnig server address;"
-        print "--- Remote server address(es)."
-        print "(e.g., 175.2.11.123  143.125.15.13  143.125.15.16  ...)"
-        sys.exit(0)
-
+def main(dist_file, local_ip, rl_ip, rem_servers):
 
     RL_SERVER_PORT = 32202 # the reinforcement server must listen on this port number (refer to rl_server_side_code/rl_server_dir)
     # get addresses (reinforcemtn learning server, other servers)
-    rl_server_addr = (sys.argv[2], RL_SERVER_PORT)
+    rl_server_addr = (rl_ip, RL_SERVER_PORT)
 
     # the port number that a simple flow server listen on (refer to start_simple_server.py)
-    addresses = [tuple([sys.argv[idx], SERVER_PORT]) for idx in xrange(3, len(sys.argv), 1)]
+    addresses = [tuple([server_ip, SERVER_PORT]) for server_ip in rem_servers]
 
     # register signal term
     signal.signal(signal.SIGTERM, signal_term_handler)
@@ -72,21 +62,26 @@ if __name__ == "__main__":
     # below code creates and initializes a Flow_Mediator for
     # generating workflows
 
+
+    factory = Poisson_Generator_Factory() # generates flows
     wait_flow_type = RL_Wait_Flow()  # determines a C array's type
-    con = Traffic_Controller((sys.argv[1],
+    con = Traffic_Controller((local_ip,
         Flow_Controller.CONTROLLER_PORT_NUM))
     mediator = None
+
 
     # might raise an exception
     try:
         mediator = Flow_Mediator(rl_server=rl_server_addr,
                       ip_addresses=addresses,
                       controller=con,
-                      wf_type=wait_flow_type)
+                      wf_type=wait_flow_type,
+                      gen_factory=factory,
+                      cdf_file=dist_file)
 
     except:
         print "Flow Medaitor could not be instantiated"
-        sys.exit(-1)
+        return
 
 
     # need to use a Queue to pass a reference to
@@ -112,3 +107,26 @@ if __name__ == "__main__":
 
     # wait until all the started  threads are terminated
     flow_handler_thread.join()
+
+
+
+if __name__ == "__main__":
+    # first step is to check if some server addresses have
+    # been passed for running
+
+
+    if len(sys.argv) < 5:
+        print "Please pass more arguments.",
+        print "There must be a CDF file and",
+        print "at least three public ip addresses:"
+        print "--- IPv4 of this server's interface;"
+        print "--- Reinforcement learnig server address;"
+        print "--- Remote server address(es)."
+        print "e.g., {0} CDF.txt 175.2.11.123  143.125.15.13  143.125.15.16  ...".format(sys.argv[0])
+
+    else:
+        # run the system
+        main(sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4::1])
+
+
+

@@ -19,19 +19,17 @@ from flow_dir.flow_handler import Flow_Handler
 import multiprocessing
 import Queue
 import xmlrpclib
-import math
 import time
 
 
 class Flow_Mediator(object):
 
-    __SLEEP_TIME = 20          # value for update period in seconds
-    __NUM_OF_STATIC_FLOWS = 15 # number of flows on this server
-    __FLOW_SIZES =      [100000, 250000, 1000000, 500000000] # flow sizes (bytes)
+    __SLEEP_TIME = 20           # value for update period in seconds
+    __NUM_OF_STATIC_FLOWS = 3   # number of flows on this server
+    __MAX_QUEUE_SIZE      = 20  # size of completed flows
     __FLOW_RATES =      [100000, 200000] # flow rate bit/s
     __FLOW_PRIORITIES = [0, 2, 4, 6]     # follws Linux
     __FLOW_PRIORITY_PROB = [0.65, 0.10, 0.2, 0.05] # priority porb
-    __FLOW_PROBS =      [0.5, 0.35, 0.23, 0.02]   # flow probabilities
     '''
     This class acts as a mediator that interacts with the flows on this
     server, the remote rl algorithm server and the local remote procedire
@@ -39,9 +37,11 @@ class Flow_Mediator(object):
     the flows and the rl server to communicate with each others.
     '''
 
-    def __init__(self, rl_server, ip_addresses,  controller, wf_type):
+    def __init__(self, rl_server, ip_addresses,
+            controller, wf_type, gen_factory, cdf_file):
         self._m_proxy = None              # a connection to the RL server
-        self._m_controller = controller   # for comminication with the local RPC
+        self._m_controller = controller   # for comminication with
+                                          # the local RPC
         self._m_exit = multiprocessing.Event() # flag for temination
 
         # below array stores all the flows on this server (waiting/running flows)
@@ -49,12 +49,20 @@ class Flow_Mediator(object):
                 [type(wf_type)()]*Flow_Mediator.__NUM_OF_STATIC_FLOWS,
                 lock=multiprocessing.Lock())
 
-        self._m_cm_flows = multiprocessing.Queue() # the structure that
-                                   # stores completed flows
+        self._m_cm_flows = multiprocessing.Queue(
+            Flow_Mediator.__MAX_QUEUE_SIZE)          # the structure that
+                                                     # stores completed
+                                                     # flows (maxsize is a
+                                                     # hard-coded vale
+                                                     # that should be
+                                                     # somehow realted
+                                                     # to rl algm.
+
         self._m_processes = []
 
 
-        self._init_flows(rl_server, ip_addresses)
+        self._init_flows(rl_server, ip_addresses,
+                gen_factory, cdf_file)
 
     '''
     Helper method to initialize the flows on
@@ -62,13 +70,16 @@ class Flow_Mediator(object):
     servers are communicating ==> 25 flows per
     server-to-server connection.
     '''
-    def _init_flows(self, rl_server, ip_addresses):
+    def _init_flows(self, rl_server,
+            ip_addresses, gen_factory, dist_file):
 
 
         # try to connect to the remote rl server
         try:
             self._m_proxy = xmlrpclib.ServerProxy("http://" + rl_server[0] + ":" + str(rl_server[1]))
+
             self._m_proxy.test_connection() # this call does nothing. It is only used for testing the connection.
+
         except xmlrpclib.Fault as err:
             print "A fault has occurred"
             print "Fault code: %d" % err.faultCode
@@ -81,15 +92,16 @@ class Flow_Mediator(object):
 
             raise
 
-        print "Starting controller"
         self._m_controller.start_controller() # start the traffic
                                               # controller
 
-        print "The controller has been started"
+
         # run a loop and create flows
         # get the number of flows for each flow size and remote host
-        num_of_hosts  = len(ip_addresses)
-        flows_per_host = self._get_nums_of_flows(num_of_hosts)
+        num_of_hosts   = len(ip_addresses)
+        flows_per_host = Flow_Mediator.__NUM_OF_STATIC_FLOWS/num_of_hosts
+
+        last_host_flows = Flow_Mediator.__NUM_OF_STATIC_FLOWS -  (num_of_hosts - 1) * flows_per_host
 
 
         # priority generator
@@ -98,70 +110,44 @@ class Flow_Mediator(object):
         m_index = 0 # for indexing flows
 
         # loop through each of the flows and create a new Flow_Handler
-        for host in xrange(0, num_of_hosts, 1):
+        for host in xrange(0, num_of_hosts-1, 1):
             # for each host create a few flows
 
-            # loops through each type of flow
-            for f_idx in xrange(0, len(flows_per_host[host]), 1):
-                num_of_flows = flows_per_host[host][f_idx]
+            # create flows per hosts
+            for _ in xrange(0, flows_per_host, 1):
+                self._m_processes.append( Flow_Handler(
+                    ip_address=ip_addresses[host],
+                    cmp_queue=self._m_cm_flows,
+                    inc_arr=self._m_arr,
+                    flow_gen=gen_factory.create_generator(),
+                    cdf_file = dist_file,
+                    flow_pref_rate=Flow_Mediator.__FLOW_RATES[m_index %
+                    len(Flow_Mediator.__FLOW_RATES)],
+                    flow_index=m_index,
+                    flow_priority=pr_generator.next()))
 
-                # create the computed number of a particular
-                # size flow
-                for _ in xrange(0, num_of_flows, 1):
-                    self._m_processes.append( Flow_Handler(
-                        ip_address=ip_addresses[host],
-                        cmp_queue=self._m_cm_flows,
-                        inc_arr=self._m_arr,
-                        flow_size=Flow_Mediator.__FLOW_SIZES[f_idx],
-                        flow_pref_rate=Flow_Mediator.__FLOW_RATES[m_index %
-                        len(Flow_Mediator.__FLOW_RATES)],
-                        flow_index=m_index,
-                        flow_priority=pr_generator.next()))
-
-                    self._m_processes[-1].start() # start a flow
-                    m_index += 1                  # update the index
+                self._m_processes[-1].start() # start a flow
+                m_index += 1                  # update the index
 
 
-    '''
-    Helper method that returns a tuple of
-    flows for each type of flows.
-    '''
-    def _get_nums_of_flows(self, num_hosts):
-
-        num_of_flow_types = len(Flow_Mediator.__FLOW_SIZES)
-        num_flows = [0]*num_of_flow_types    # get a list that stores nums
-
-
-        for idx in xrange(0, num_of_flow_types - 1, 1):
-            num_flows[idx] = int(math.floor(
-                Flow_Mediator.__FLOW_PROBS[idx]*Flow_Mediator.
-                __NUM_OF_STATIC_FLOWS))
-
-
-        # the number of the largest flows depends on the previous flows
-        num_flows[-1] = (Flow_Mediator.__NUM_OF_STATIC_FLOWS -
-                sum(num_flows))
-
-        # all the remote clients (servers that belong to cluster)
-        # have the smame numbers of different flows
-        host_flows = [None]*num_hosts
+        # created flows for the firs remote servers
+        # creating flows for the last server
+        for _ in xrange(0, last_host_flows, 1):
+            self._m_processes.append( Flow_Handler(
+            ip_address=ip_addresses[-1],
+            cmp_queue=self._m_cm_flows,
+            inc_arr=self._m_arr,
+            flow_gen=gen_factory.create_generator(),
+            cdf_file = dist_file,
+            flow_pref_rate=Flow_Mediator.__FLOW_RATES[m_index %
+            len(Flow_Mediator.__FLOW_RATES)],
+            flow_index=m_index,
+            flow_priority=pr_generator.next()))
 
 
-        # compute a vector of flows per remote server
-        host_vector = []
-        for idx in xrange(0, num_of_flow_types, 1):
-            host_vector.append(num_flows[idx] / num_hosts)
+            self._m_processes[-1].start() # start a flow
+            m_index += 1                  # update the index
 
-        for idx in xrange(0, num_hosts-1, 1):
-            host_flows[idx] = host_vector
-
-
-        # last host gets the remaining flows
-        host_flows[-1] = [num_flows[idx] - host_vector[idx]*(num_hosts-1)
-                for idx in xrange(0, num_of_flow_types, 1)]
-
-        # returns an array of flows
-        return host_flows
 
     '''
     A helper to generate priorities for the flows
@@ -268,7 +254,7 @@ class Flow_Mediator(object):
         print "Stopping my controller"
         self._m_controller.stop_controller()
 
-        print "Controller has bee stopped"
+        print "Controller has been stopped"
         # Before stopping the Flow_Mediator,
         # notify the remote rl server about it.
         try:
@@ -280,4 +266,14 @@ class Flow_Mediator(object):
 
 
 
+    '''
+    Sets the number of flows that this flow mediator
+    generates overall/distributes among all remote serverers.
 
+    Args:
+        flow_number : total number of flows for a host
+    '''
+    @staticmethod
+    def set_flow_number(flow_number):
+        if flow_number > 0:
+            Flow_Mediator.__NUM_OF_STATIC_FLOWS = flow_number
