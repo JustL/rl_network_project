@@ -52,9 +52,8 @@ class Flow_Handler(Process):
 
     def __init__(self, ip_address, flow_gen, data_file,
             flow_index, flow_priority=0, host_index="h1"):
-
-
         super(Flow_Handler, self).__init__()
+
 
 
         self._init_io(flow_gen, data_file,
@@ -94,7 +93,7 @@ class Flow_Handler(Process):
 
         flow_gen.load_cdf(cdf_file)
 
-        with open("flow_statistics_{0}/simple_flow_{1}.txt".format(host_index, f_idx),
+        with open("flow_statistics_{0}/simple_flow_{1}.csv".format(host_index, f_idx),
                 "a") as fd:
             # write titles of the data columns
             fd.write("FLOW_SIZE_bytes,FCT_us\n")
@@ -168,19 +167,16 @@ class Flow_Handler(Process):
         self._flow_data(sockfd, libc)
 
 
-
-
     '''
-    Method writes statistical data to a file.
+    Method notifies the Flow_Medaitor that the flow has completed
     '''
     def _record_fct(self, flow_cmpl_time, flow_size):
-
         # save flow completion time
-        with  open("flow_statistics_{0}/simple_flow_{1}.txt".format(
-                    self._m_host_index,
-                    self._m_index), "a") as fd:
+        with  open("flow_statistics_{0}/simple_flow_{1}.csv".format(
+            self._m_host_index, self._m_index), "a") as file_d:
 
-            fd.write("{0},{1}\n".format(flow_size, flow_cmpl_time))
+            file_d.write("{0},{1}\n".format(
+                    flow_size, flow_cmpl_time))
 
 
 
@@ -216,9 +212,10 @@ class Flow_Handler(Process):
         '''
         while 1:
 
-            flow_size = int(self._m_gen.gen_random_cdf())
+            flow_size = int(self._m_gen.gen_random_cdf()) % 100
             data = (ctypes.c_char*flow_size)()
             data = "o"*flow_size
+
 
             # initialize some variables for sending a flow
             total_sent = 0
@@ -265,7 +262,8 @@ class Flow_Handler(Process):
 
             # wait for response from the remote server
 
-            while 1:   # loop until reply received
+            while 1:   # loop until the terminal
+                       # message has been received
 
                 read_bytes = libc.recv(sockfd,
                         ctypes.byref(chunk), CHUNK_SIZE, 0)

@@ -19,9 +19,8 @@ import multiprocessing
 
 class Flow_Mediator(object):
 
-    __NUM_OF_STATIC_FLOWS = 100 # number of flows on this server
-    __FLOW_RATES =      [100000, 200000] # flow rate bit/s
-    __FLOW_PRIORITIES = [0, 2, 4, 6]     # follws Linux
+    __NUM_OF_STATIC_FLOWS = 3 # number of flows on this server
+    __FLOW_PRIORITIES = [0, 2, 4, 6]     # follows Linux
     __FLOW_PRIORITY_PROB = [0.65, 0.10, 0.20, 0.05] # priority prob
     '''
     This class acts as a mediator that interacts with the flows on this

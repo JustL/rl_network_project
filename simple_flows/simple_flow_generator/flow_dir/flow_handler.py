@@ -11,6 +11,8 @@
 '''
 
 from GS_timing import micros # for precise time measurements
+from GS_timing import delayMicroseconds
+
 
 from multiprocessing import Process
 from socket import AF_INET
@@ -18,8 +20,9 @@ from socket import SOCK_STREAM
 from socket import IPPROTO_TCP
 from socket import SOL_SOCKET
 from socket import SHUT_RDWR
-import time
 import sys
+import random
+
 
 # below are C strucutres that should only be used on Linux
 # machines
@@ -40,36 +43,67 @@ SO_PRIORITY = 12                  # a Linux flag that enables setting a
                                   # socket priority
                                   # (refer to setsockopt(7) Linux)
 
+
+
 class Flow_Handler(Process):
     __release_version = 1
-    __CONST_TIME_VAL = 15 # 3 s of sleeping
+    __CONST_TIME_VAL =  3 # 3 s of sleeping
 
 
-    def __init__(self, ip_address, flow_size,
+    def __init__(self, ip_address, flow_gen, cdf_file,
             flow_index, flow_priority=0, host_index="h1"):
         super(Flow_Handler, self).__init__()
 
 
-        print "Flow_Handler: Flow_Handler:",
-        print "rm_server = '%s'" % (ip_address, )
+
+        self._init_io(flow_gen, cdf_file,
+                host_index, flow_index)      # initialize ong related
+                                             # to io
+
+        self._m_gen        = flow_gen
 
         self._m_host_index = host_index      # for mininet to identify
                                              # different hosts
+
         self._m_close    = True              # socket needs to be closed
-        self._m_rem_addr = ip_address        # the ipv4 address of a
-                                             # remote server
+
+        self._m_rem_addr = ip_address        # the ipv4 address
+                                             # of a remote server
                                              # (including the port number)
 
-        self._m_size = flow_size             # flow size
 
-        self._m_lsi  = 0                     # for counting the number
-        self._m_msi  = 0                     # of flows
-
-        self._m_index = flow_index           # the index of this flow
+        self._m_index = flow_index           # the index of this
+                                             # flow in the incomplete
+                                             # flows array
         self._m_priority = ctypes.c_int(flow_priority)   # Linux stuff
 
 
+
+    '''
+    A helper function that reads a file and initializes the passed
+    flow generator. Also, it handles so other io operations.
+
+    Args:
+        flow_gen : flow generator object
+        cdf_file : a file that stores a distribution
+
+    Might throw IOError, ValueError
+    '''
+    def _init_io(self, flow_gen, cdf_file, host_index, f_idx):
+
+        flow_gen.load_cdf(cdf_file)
+
+        with open("flow_statistics_{0}/simple_flow_{1}.csv".format(host_index, f_idx),
+                "a") as fd:
+            # write titles of the data columns
+            fd.write("FLOW_SIZE_bytes,FCT_us\n")
+
+
     def run(self):
+
+        print "Flow_Handler: Flow index: %i" % (self._m_index,)
+
+        random.seed(a=None) # initialize seed for the gen
 
         # below is a C-type code that can only work on Linux
         # machines. If this process is run on any other machine,
@@ -77,7 +111,6 @@ class Flow_Handler(Process):
         if not sys.platform.startswith("linux"):
             # not a Linux machine --> return
             return
-
 
         # below code is actually C code and some Linux system calls
 
@@ -119,23 +152,14 @@ class Flow_Handler(Process):
 
         # start initializeing the address structure
         serv_addr.sin_family = AF_INET
-        serv_addr.sin_addr.s_addr = libc.inet_addr(self._m_rem_addr[0])
-                                                         # a tuple -- ip a string
-        serv_addr.sin_port = libc.htons(self._m_rem_addr[1])
-                                                         # a tuple -- port is an integer
-
-        print "Flow_Handler: serv_addr:"
-        print "sin_family:", serv_addr.sin_family
-        print "sin_addr.s_addr:", serv_addr.sin_addr.s_addr
-        print "sin_port:", serv_addr.sin_port
+        serv_addr.sin_addr.s_addr = libc.inet_addr(self._m_rem_addr[0]) # a tuple -- ip a string
+        serv_addr.sin_port = libc.htons(self._m_rem_addr[1])  # a tuple -- port is an integer
 
         # done with the server address
         # It is time to try to connect
         if libc.connect(sockfd, ctypes.byref(serv_addr),
                         ctypes.sizeof(serv_addr)) < 0:
-
-            print "\nSocket could not connect to a remote server"
-            print "errno: %i\n" % (ctypes.get_errno(), )
+            print "Socket could not connect to a remote server"
             libc.close(sockfd)  # close socket first
             return
 
@@ -144,28 +168,15 @@ class Flow_Handler(Process):
 
 
     '''
-    Method records flow completion time
-    Args:
-        flow_cmpl_time : fct
+    Method notifies the Flow_Medaitor that the flow has completed
     '''
-    def _record_fct(self, flow_cmpl_time):
+    def _record_fct(self, flow_cmpl_time, flow_size):
         # save flow completion time
-        # for recording the number of flows
-        if self._m_lsi + 1 < 0: # overflow
-            self._m_msi += 1   # increment number of
-                               # overflows
+        with  open("flow_statistics_{0}/simple_flow_{1}.csv".format(
+            self._m_host_index, self._m_index), "a") as file_d:
 
-            self._m_lsi = -1   # this value in order to
-                               # avoid an else statement`
-        self._m_lsi += 1
-
-
-        with  open(
-                "flow_statistics_{0}/simple_flow_{1}.txt".format(
-                    self._m_host_index,
-                    self._m_index), "a") as file:
-            file.write("Flow size: {0} bytes, fct: {1} us, overflows: {2}, flow counter: {3}\n".format(
-                self._m_size, flow_cmpl_time, self._m_msi, self._m_lsi))
+            file_d.write("{0},{1}\n".format(
+                    flow_size, flow_cmpl_time))
 
 
 
@@ -178,11 +189,9 @@ class Flow_Handler(Process):
     '''
     def _flow_data(self, sockfd, libc):
 
-        data = (ctypes.c_char*self._m_size)()     # a flow-size string
-        data[0::1] = "0"*self._m_size
-        CHUNK_SIZE = 2048
-        chunk = (ctypes.c_char*CHUNK_SIZE)()      # a buffer to store
-                                                  # received data
+        CHUNK_SIZE = 1024
+        chunk = (ctypes.c_char*CHUNK_SIZE)()    # a buffer to store
+                                                # received data
 
         # initialize some message constants
         MSG_LEN = len(PROTOCOL_SIGNAL[0])
@@ -190,33 +199,37 @@ class Flow_Handler(Process):
         TERM_MSG[0::1] = PROTOCOL_SIGNAL[0]
 
         # initialize some variables for receiving a flow
-        RECV_SIGN = PROTOCOL_SIGNAL[1]
-        RECV_LEN  = len(PROTOCOL_SIGNAL[1]) # for initializing arrays
+        RECV_MSG = PROTOCOL_SIGNAL[1]
+
 
 
         '''
         The while loop acts as if it was a server loop -- runs forever.
         This approach used for using the same socket for sending a flow
         in order to reduce overhead for creating a new socket and a new
-        process. Once the flow has completed, for some fixed time the
-        process sleeps.
+        process. Once the flow has completed, the prcess sleeps for a
+        random period of time generetated by generator.
         '''
         while 1:
 
+            flow_size = int(self._m_gen.gen_random_cdf())
+            data = (ctypes.c_char*flow_size)()
+            data = "o"*flow_size
+
+
             # initialize some variables for sending a flow
             total_sent = 0
-            recv_data = "0"*RECV_LEN
 
 
             flow_start = micros() # get the current time for timestamping
 
-            while total_sent < self._m_size: # send the entire flow
+            while total_sent < flow_size: # send the entire flow
                 sent_bytes = libc.send(sockfd, data[total_sent::1],
-                        self._m_size, 0)
+                        flow_size, 0)
                 if sent_bytes  <= 0:
                     print "Socket connection  broken or closed"
                     if  self._m_close:
-                        libc.shutdown(sockfd, SHUT_RDWR)
+                        libc.shutdwon(sockfd, SHUT_RDWR)
                         libc.close(sockfd) # close socket
                         self._m_close = False
                     return
@@ -230,6 +243,7 @@ class Flow_Handler(Process):
             # the flow data has been sent
             # add the terminal sequence
             total_sent = 0
+
 
             while total_sent < MSG_LEN:
                 sent_bytes = libc.send(sockfd, TERM_MSG[total_sent::1],
@@ -247,9 +261,12 @@ class Flow_Handler(Process):
 
 
             # wait for response from the remote server
-            while recv_data != RECV_SIGN:   # loop until the terminal
-                                          # message has been received
-                read_bytes = libc.recv(sockfd, chunk, CHUNK_SIZE, 0)
+
+            while 1:   # loop until the terminal
+                       # message has been received
+
+                read_bytes = libc.recv(sockfd,
+                        ctypes.byref(chunk), CHUNK_SIZE, 0)
 
                 if read_bytes <= 0:
                     print "Socket connection broken or closed"
@@ -259,23 +276,20 @@ class Flow_Handler(Process):
                         self._m_close = False
                     return
 
-                # update the received data
-                if read_bytes >= RECV_LEN:
-                    recv_data = chunk[read_bytes-RECV_LEN:read_bytes:1]
-
-                else:
-                    start_idx = RECV_LEN - read_bytes
-                    recv_data = chunk[0:read_bytes:1] + recv_data[start_idx::1]
+                # check for received data
+                if chunk[read_bytes-1] == RECV_MSG:
+                    break
 
 
             flow_end = micros() # end of the flow
 
             # notify the flow mediator that this flow has finished
-            self._record_fct((flow_end - flow_start))
+            self._record_fct((flow_end - flow_start), flow_size)
 
 
-            # sleep for a const number of seconds
-            time.sleep(Flow_Handler.__CONST_TIME_VAL)
+            # sleep for a random period of time
+            delayMicroseconds(self._m_gen.gen_random_interval())
+
 
 
 
