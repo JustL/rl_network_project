@@ -10,7 +10,7 @@ import Queue
 
 
 
-USAGE_MSG  = "\nUsage: {0} file_to_plot [-x_label 'l_x'] [-y_label 'l_y'] [-title 'title']\n\nfile_to_plot -- file(s) whose CDF(s) to plot on one graph;\n\n'l_x' (optional) -- x label title (surrounded by single/double  quotation marks);\n\n'l_y' (optional) -- y label title (surrounded by single/double quotation marks);\n\n'title' (optional) -- title that will be added to the graph (surrounded by single/double quotation marks)."
+USAGE_MSG  = "\nUsage: {0} file_to_plot [-x_label 'l_x'] [-y_label 'l_y'] [-title 'title'] [-save_file file]\n\nfile_to_plot -- file(s) whose CDF(s) to plot on one graph;\n\n'l_x' (optional) -- x label title (surrounded by single/double  quotation marks);\n\n'l_y' (optional) -- y label title (surrounded by single/double quotation marks);\n\n'title' (optional) -- title that will be added to the graph (surrounded by single/double quotation marks);\n\nfile (optional) -- if the user wants to save the plot instead of displaying it, pass a file."
 
 
 
@@ -86,8 +86,10 @@ content on the computer screen.
         x_label      :   label for plotting
         y_label      :   label for plotting
         graph_title  :   title that will be displayed on the graph
+        save_file    :   file where the plot is saved
 '''
-def _perform_plot(cdf_arrays, x_label, y_label, graph_title):
+def _perform_plot(cdf_arrays, x_label, y_label,
+        graph_title, save_file=None):
 
 
     if not cdf_arrays: # if no data to plot
@@ -135,23 +137,30 @@ def _perform_plot(cdf_arrays, x_label, y_label, graph_title):
         col_index += 1 # change the color
 
 
-    # add a legend and show the resulting graph
+    # add a legend and show or save the resulting figure
     pylt.legend(loc="upper right")
-    pylt.show()
+
+    if save_file != None: # means needs to be saved
+        pylt.savefig(save_file, bbox_inches="tight")
+
+    else:                 # means display the graph
+        pylt.show()
 
 
 
 
-def _plot_CDF(data_files, graph_labels):
+def _plot_CDF(data_files, graph_options):
 
     if len(data_files) > len(AVAIL_COLORS):
         raise ValueError("There are no enough colors to plot all CDFs\n")
 
 
     # graph plotting parameters
-    x_label = graph_labels["-x_label"]
-    y_label = graph_labels["-y_label"]
-    graph_title = graph_labels["-title"]
+    x_label = graph_options["-x_label"]
+    y_label = graph_options["-y_label"]
+    graph_title = graph_options["-title"]
+    plot_file = graph_options["-save_file"]
+
     comp_cdfs = []  # stores tuples of numpy arrays for plotting
 
 
@@ -245,16 +254,52 @@ def _plot_CDF(data_files, graph_labels):
 
 
     # for both cases use the same interface
-    _perform_plot(comp_cdfs, x_label, y_label, graph_title)
+    _perform_plot(comp_cdfs, x_label, y_label,
+            graph_title, save_file=plot_file)
 
 
 
+
+
+'''
+Helper function to check if the figre_file
+refers to an existing directory.
+
+  return : if no such path exists : True
+'''
+def _no_path(figure_file):
+
+    # need to handle two cases
+
+      # Case 1: the file in the same directory;
+      # Case 2: the file in a different directory.
+
+    dir_part, file_part = os.path.split(figure_file)
+
+    if file_part != "" and dir_part == "":   # same directory
+        return False
+
+    elif file_part == "" and dir_part != "": # no filename
+        return True
+
+    elif file_part != "" and dir_part != "": # filename passed
+        return not os.path.isdir(dir_part)   # check if dir exists
+
+
+    return True
+
+
+
+
+'''
+Helper function for checking passed optioons to the script
+'''
 def _preprocess_input(inputs):
 
 
     # return values
     cdf_files = []
-    labels = {"-x_label" : "Time (us)", "-y_label" : "CDF", "-title" : "FCTs"}
+    plot_options = {"-x_label" : "Time (us)", "-y_label" : "CDF", "-title" : "FCTs", "-save_file" : None}
 
 
     # read inputs and map them to the correct values
@@ -265,11 +310,11 @@ def _preprocess_input(inputs):
 
         # if the value is one of the parameters
         # check if it is in the appropriate place
-        if inputs[loc_index] in labels:
+        if inputs[loc_index] in plot_options:
             if not cdf_files or (loc_index + 1) == input_length:
                 raise ValueError(USAGE_MSG)
             else: # set appropriate parameters
-                labels[inputs[loc_index]] = inputs[loc_index+1]
+                plot_options[inputs[loc_index]] = inputs[loc_index+1]
                 loc_index += 2
 
         else: # just append a new file if it exists
@@ -280,8 +325,12 @@ def _preprocess_input(inputs):
             loc_index += 1
 
 
+    # check if the passed path exists:
+    if plot_options["-save_file"] != None and _no_path(plot_options["-save_file"]):
+        raise RuntimeError("Your passed path to a file does not exist!\n")
 
-    return (cdf_files, labels)
+
+    return (cdf_files, plot_options)
 
 
 
