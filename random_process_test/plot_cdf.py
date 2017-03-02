@@ -6,11 +6,10 @@ import matplotlib.pyplot as pylt
 import os.path
 import sys
 import multiprocessing
-import Queue
 
 
 
-USAGE_MSG  = "\nUsage: {0} file_to_plot [-x_label 'l_x'] [-y_label 'l_y'] [-title 'title'] [-save_file file]\n\nfile_to_plot -- file(s) whose CDF(s) to plot on one graph;\n\n'l_x' (optional) -- x label title (surrounded by single/double  quotation marks);\n\n'l_y' (optional) -- y label title (surrounded by single/double quotation marks);\n\n'title' (optional) -- title that will be added to the graph (surrounded by single/double quotation marks);\n\nfile (optional) -- if the user wants to save the plot instead of displaying it, pass a file."
+USAGE_MSG  = "\nUsage: {0} file(s)_to_plot [-x_label 'l_x'] [-y_label 'l_y'] [-title 'title'] [-save_file file]\n\nfile(s)_to_plot -- file(s) whose CDF(s) to plot on one graph;\n\n'l_x' (optional) -- x label title (surrounded by single/double  quotation marks);\n\n'l_y' (optional) -- y label title (surrounded by single/double quotation marks);\n\n'title' (optional) -- title that will be added to the graph (surrounded by single/double quotation marks);\n\nfile (optional) -- if the user wants to save the plot instead of displaying it, pass a file."
 
 
 
@@ -34,7 +33,13 @@ def _compute_cdf_data(file_name, file_data):
     cdf_arr = numpy.array(xrange(
         sorted_fcts.shape[0])) / float(sorted_fcts.shape[0])
 
-    return (sorted_fcts, cdf_arr, file_name)
+
+    # get proper name for this data set
+    dir_part, file_part = os.path.split(file_name)
+
+    file_part = file_part.split(".")[0] # discard file extension
+
+    return (sorted_fcts, cdf_arr, file_part)
 
 
 
@@ -127,6 +132,13 @@ def _perform_plot(cdf_arrays, x_label, y_label,
 
     col_index = 0 # color index for plotting
 
+    # for scaling the x and y axes
+    EXTRA_SPACE_X = 1000000 # look at code below to know the meaning
+    axis_y_min = 0.0
+    axis_y_max = 1.2
+    axis_x_min = 0.0
+    axis_x_max = -1.0 # only this value has to be found
+
     for data_plot in cdf_arrays:
 
         pylt.plot(data_plot[0], data_plot[1],
@@ -135,10 +147,20 @@ def _perform_plot(cdf_arrays, x_label, y_label,
         )
 
         col_index += 1 # change the color
+        # find maximum completion time
+        if data_plot[0][-1] > axis_x_max:
+            # FCTs have been sorted in
+            # ascending order
+            axis_x_max = data_plot[0][-1]
 
+
+    # give some extra space for axis_x_max to make
+    # the figure nicer
+    axis_x_max += EXTRA_SPACE_X
 
     # add a legend and show or save the resulting figure
     pylt.legend(loc="upper right")
+    pylt.axis([axis_x_min, axis_x_max, axis_y_min, axis_y_max])
 
     if save_file != None: # means needs to be saved
         pylt.savefig(save_file, bbox_inches="tight")
@@ -172,7 +194,7 @@ def _plot_CDF(data_files, graph_options):
         if CPU_COUNT < 1:
             raise RuntimeError("CPU count is less than 1\n")
 
-        cdfs = multiprocessing.Queue(maxsize=NUM_OF_FILES)
+        cdf_queue = multiprocessing.Queue(maxsize=NUM_OF_FILES)
         prc_pool = [] # pool of processes
 
 
@@ -185,11 +207,12 @@ def _plot_CDF(data_files, graph_options):
                 # create a new process and
                 # pass arguments to it
                 temp_list = [d_file]
-                prc_pool.append(multiprocessing.Process(
+                temp_prc = multiprocessing.Process(
                     target=_read_and_compute_cdf,
-                    args=(cdfs, temp_list)))
+                    args=(cdf_queue, temp_list))
 
-                prc_pool[-1].start() # start a new process
+                prc_pool.append(temp_prc)
+                temp_prc.start() # start a new process
 
 
         else: # distribute among the CPUs equally
@@ -203,38 +226,43 @@ def _plot_CDF(data_files, graph_options):
 
                 # create a new process and pass
                 # appropriate arguments to it
-                prc_pool.append(multiprocessing.Process(
+                temp_prc = multiprocessing.Process(
                     target=_read_and_compute_cdf,
-                    args=(cdfs,
-                    data_files[global_index:global_index+jobs_per_cpu:1])))
+                    args=(cdf_queue,
+                    data_files[global_index:global_index+jobs_per_cpu:1]))
 
+                prc_pool.append(temp_prc)
                 # start the newly created process
-                prc_pool[-1].start()
+                temp_prc.start()
 
                 global_index += jobs_per_cpu # update global index
 
 
             # for the last process give the rest of files
-            prc_pool.append(multiprocessing.Process(
+            last_prc = multiprocessing.Process(
                 target=_read_and_compute_cdf,
-                args=(cdfs, data_files[global_index::1])))
+                args=(cdf_queue, data_files[global_index::1]))
 
-            prc_pool[-1].start()
+            prc_pool.append(last_prc)
+            last_prc.start()
 
+
+        # fisrt read all files from the queue before joining
+        # since Queue uses a buffer and a process cannot termiante
+        # until the buffer is flushed. As a result, reading first
+        # is crucial.
+        read_cdfs = 0
+
+        while read_cdfs < NUM_OF_FILES:
+            # wait for another process to
+            # enqueue a CDF structure
+            comp_cdfs.append(cdf_queue.get(block=True))
+            read_cdfs += 1
 
         # wait for all processes to finish before plotting
         for prc_stop in prc_pool:
             prc_stop.join()         # wait until a process finishes
 
-        # all the started processes have finished
-        try:
-            # read the computed cdfs into a list
-            while 1:
-                comp_cdfs.append(cdfs.get(block=False))
-
-        except Queue.Empty:
-            # done reading cdfs
-            pass
 
 
     else: # just do simple computing
@@ -312,14 +340,14 @@ def _preprocess_input(inputs):
         # check if it is in the appropriate place
         if inputs[loc_index] in plot_options:
             if not cdf_files or (loc_index + 1) == input_length:
-                raise ValueError(USAGE_MSG)
+                raise ValueError(USAGE_MSG.format(inputs[0]))
             else: # set appropriate parameters
                 plot_options[inputs[loc_index]] = inputs[loc_index+1]
                 loc_index += 2
 
         else: # just append a new file if it exists
             if not os.path.isfile(inputs[loc_index]):
-                raise ValueError(USAGE_MSG)
+                raise ValueError(USAGE_MSG.format(inputs[0]))
 
             cdf_files.append(inputs[loc_index])
             loc_index += 1
@@ -339,7 +367,7 @@ def _preprocess_input(inputs):
 if __name__ == "__main__":
 
     if len(sys.argv) < 2:
-        print USAGE_MSG
+        print USAGE_MSG.format(sys.argv[0])
 
     else:
         try:
