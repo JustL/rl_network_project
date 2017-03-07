@@ -126,7 +126,7 @@ class Flow_Mediator(object):
                 data_file = cdf_file,
                 flow_index=m_index,
                 host_index=h_index,
-                cdf_sch=info_struct))
+                prio_sch=info_struct))
 
             self._m_processes[-1].start() # start a flow
 

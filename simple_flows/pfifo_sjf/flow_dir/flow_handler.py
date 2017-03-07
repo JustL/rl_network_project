@@ -71,7 +71,7 @@ class Flow_Handler(Process):
                                    # 6th prio in 0th band
 
     def __init__(self, ip_address, flow_gen, data_file,
-            flow_index, host_index, cdf_sch):
+            flow_index, host_index, prio_sch):
         super(Flow_Handler, self).__init__()
 
 
@@ -96,7 +96,7 @@ class Flow_Handler(Process):
                                              # in a host
 
 
-        self._m_shared_info = cdf_sch        # shared value that
+        self._m_shared_info = prio_sch       # shared value that
                                              # help handle
                                              # priorities
 
@@ -369,7 +369,7 @@ class Flow_Handler(Process):
                 if sent_bytes  <= 0:
                     print "Socket connection  broken or closed"
                     if  self._m_close:
-                        libc.shutdwon(sockfd, SHUT_RDWR)
+                        libc.shutdown(sockfd, SHUT_RDWR)
                         libc.close(sockfd) # close socket
                         self._m_close = False
                     return
